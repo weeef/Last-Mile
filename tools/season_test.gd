@@ -13,6 +13,10 @@ func play(seed_value: int, charter: String, heat: int, verbose: bool) -> Sim:
 					("  LEASE $%d %s" % [int(l["amount"]), "paid" if l["paid"] else ("FINAL NOTICE" if l["strike"] else "EVICTED")]) if not l.is_empty() else ""])
 			elif n == "morning" and sim.twist != "":
 				print("   day %2d twist: %s" % [sim.day(), Season.twist_name(sim.twist)])
+			elif n == "event_resolved":
+				print("   day %2d event %s -> %s" % [sim.day(), d["id"], d["result"]])
+			elif n == "route_combo" and d["mult"] >= 2.0:
+				print("   big clean run x%.1f +$%d (%s)" % [d["mult"], int(d["bonus"]), ", ".join(d["hits"])])
 			elif n == "run_over":
 				print("   RUN OVER: %s on day %d, score %d, rep %d, best streak %d, leases %d" % ["WON" if d["won"] else "evicted", d["day"], d["score"], d["rep"], d["best_streak"], d["leases_paid"]]))
 	sim.setup(seed_value, [], run)
@@ -30,4 +34,5 @@ func _init() -> void:
 	var a := play(99, "green", 3, false)
 	var b := play(99, "green", 3, false)
 	print("season deterministic: ", a.run_result.get("score", -1) == b.run_result.get("score", -2) and a.tick == b.tick)
+	print("combo cash in that run: $%d, best route x%.1f" % [int(a.run_stats["combo_cash"]), a.run_stats["best_combo"]])
 	quit()

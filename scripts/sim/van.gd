@@ -44,6 +44,13 @@ var auto_fill := true                # keep loading automatically at the depot
 var returns: Array[Parcel] = []      # "nobody home" parcels riding back to the depot
 var rescue_target := -1              # van id we're driving to rescue
 
+# Route hand (see Combos) and dispatcher boosts
+var route_mult := 1.0                # combo multiplier for the current route
+var route_hits: Array = []           # combo names, for the UI
+var route_base := 0.0                # on-time pay earned so far on this route
+var route_clean := true              # no late parcels yet on this route
+var boost_until := -1.0              # Floor It: faster until this minute
+
 
 func mod_slots() -> int:
 	return spec()["mod_slots"]

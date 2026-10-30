@@ -64,6 +64,7 @@ func setup(p_sim: Sim) -> void:
 	sim.van_added.connect(_add_van_node)
 	sim.van_removed.connect(_remove_van_node)
 	sim.parcel_delivered.connect(_on_delivered)
+	sim.event.connect(_on_route_event)
 	sim.event.connect(_on_sim_event)
 	_route_mesh = MeshInstance3D.new()
 	var rm := StandardMaterial3D.new()
@@ -1177,6 +1178,42 @@ func pick_van(screen_pos: Vector2, cam: Camera3D) -> Van:
 				best_d = d
 				best = v
 	return best
+
+
+## Big jackpot pop over the vehicle when a route hand pays out (or busts).
+func _on_route_event(n: String, d: Dictionary) -> void:
+	if n != "route_combo" and n != "route_bust":
+		return
+	var v: Van = d["van"]
+	var l := Label3D.new()
+	l.font = _font_mono
+	if n == "route_combo":
+		l.text = "CLEAN RUN x%.1f\n+$%d" % [d["mult"], int(d["bonus"])]
+		l.modulate = Color("ffd166") if d["mult"] < 2.0 else Color("ff8a5c")
+		l.font_size = 96 + int(minf(d["mult"], 4.0) * 16.0)
+	else:
+		l.text = "BUST"
+		l.modulate = Color("f09a86")
+		l.font_size = 90
+	l.pixel_size = 0.01
+	l.outline_size = 22
+	l.outline_modulate = Palette.INK
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.render_priority = 11
+	l.outline_render_priority = 10
+	var start := van_render_pos(v) + Vector3(0, 3.6, 0)
+	l.position = start
+	l.scale = Vector3.ONE * 0.4
+	add_child(l)
+	var tw := create_tween()
+	tw.tween_property(l, "scale", Vector3.ONE * 1.15, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(l, "scale", Vector3.ONE, 0.12)
+	tw.tween_interval(1.2)
+	tw.tween_property(l, "position", start + Vector3(0, 2.0, 0), 0.9)
+	tw.parallel().tween_property(l, "modulate:a", 0.0, 0.9)
+	tw.parallel().tween_property(l, "outline_modulate:a", 0.0, 0.9)
+	tw.tween_callback(l.queue_free)
 
 
 func _on_delivered(p: Parcel, v: Van, pay: float) -> void:

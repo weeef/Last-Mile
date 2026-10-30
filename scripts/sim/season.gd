@@ -111,7 +111,7 @@ static func daily_charter(day_number: int) -> String:
 ## Final run score and the HQ reputation it earns.
 static func score(r: Dictionary) -> int:
 	var s := float(r.get("revenue", 0.0))
-	s += 40.0 * r.get("stars", 0) + 15.0 * r.get("best_streak", 0) + 250.0 * r.get("leases_paid", 0)
+	s += 40.0 * r.get("stars", 0) + 15.0 * r.get("best_streak", 0) + 250.0 * r.get("leases_paid", 0) + 200.0 * r.get("best_combo", 0.0)
 	if r.get("won", false):
 		s += 1000.0
 	return int(round(s * (1.0 + 0.15 * r.get("heat", 0))))

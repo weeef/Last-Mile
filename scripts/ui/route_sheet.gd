@@ -15,6 +15,8 @@ var _auto_btn: Button
 var _tab_btns := {}
 var _list: VBoxContainer
 var _summary: Label
+var _hand_mult: Label
+var _hand_hits: Label
 var _send: Button
 var _service: Button
 var _eta_labels := {}     # parcel id -> Label
@@ -72,6 +74,22 @@ func setup(p_sim: Sim, p_main: Node) -> void:
 	sc.add_child(_list)
 	v.add_child(sc)
 	v.add_child(UIKit.rule())
+	var hand := PanelContainer.new()
+	hand.add_theme_stylebox_override("panel", UIKit.flat(Palette.INK_2, 3, 10, 5))
+	hand.tooltip_text = "Your load is scored like a poker hand. Come back with zero late parcels and the route's on-time pay is paid again times (multiplier - 1)."
+	var hh := UIKit.hbox(8)
+	hand.add_child(hh)
+	var hv := UIKit.vbox(-3)
+	hv.add_child(UIKit.head("Route hand", 11, Palette.TEXT_INV_SOFT))
+	_hand_mult = UIKit.mono("x1.0", 22, Palette.PAPER, true)
+	hv.add_child(_hand_mult)
+	hh.add_child(hv)
+	_hand_hits = UIKit.label("", 12, Palette.PAPER, "head_semi")
+	_hand_hits.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_hand_hits.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_hand_hits.custom_minimum_size.x = 230
+	hh.add_child(_hand_hits)
+	v.add_child(hand)
 	_summary = UIKit.label("", 13, Palette.TEXT, "bold")
 	_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_summary.custom_minimum_size.x = 330
@@ -159,6 +177,16 @@ func refresh() -> void:
 			bits.append("all on time")
 		_summary.text = " · ".join(bits)
 		_summary.add_theme_color_override("font_color", Palette.RED if late > 0 else (Palette.AMBER if early > 0 else Palette.GREEN))
+	var res := Combos.evaluate(sim.city, van.cargo, van, sim.player())
+	var m: float = res["mult"]
+	_hand_mult.text = "x%.1f" % m
+	_hand_mult.add_theme_color_override("font_color", Palette.ORANGE if m >= 2.0 else (Palette.AMBER.lightened(0.2) if m > 1.0 else Palette.TEXT_INV_SOFT))
+	var hint := Combos.describe(res)
+	if res["hits"].is_empty() and not van.cargo.is_empty():
+		hint = "No combo yet. Try: one district (Sweep), same street (Neighbors), fill it up (Full Truck), all express."
+	if late > 0 and m > 1.0:
+		hint += "  ·  A late stop will bust this hand!"
+	_hand_hits.text = hint
 	_send.disabled = van.cargo.is_empty() or van.state != Van.State.LOADING
 	_service.visible = van.state == Van.State.IDLE
 	_service.text = "Service %d%%" % int(van.condition * 100)

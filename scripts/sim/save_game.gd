@@ -16,7 +16,7 @@ const DRIVER_F := ["name", "traits", "home_district", "mood", "familiarity", "de
 const MOVER_F := ["pos", "prev_pos", "heading", "path", "path_i", "odometer"]
 const VAN_F := ["id", "number", "company", "code", "type", "slots", "max_kg", "state", "route_total", "node",
 	"target_node", "timer", "wait", "ready", "condition", "breakdowns", "shop_reason", "shop_waiting", "shop_timer",
-	"mods", "manual_order", "auto_fill", "rescue_target"]
+	"mods", "manual_order", "auto_fill", "rescue_target", "route_mult", "route_hits", "route_base", "route_clean", "boost_until"]
 const JOB_F := ["id", "vendor", "houses", "weights", "total_kg", "pay", "express", "promise", "expires", "state", "timer", "rush"]
 const COMPANY_F := ["money", "level", "lifetime_revenue", "auto_dispatch", "dispatch_threshold", "max_wait",
 	"auto_service", "delivered_today", "ontime_today", "delivered_total", "ontime_total", "ontime_yesterday",
@@ -95,6 +95,11 @@ static func save(sim: Sim, slot: int) -> bool:
 		"lease_debt": sim.lease_debt,
 		"run_stats": sim.run_stats.duplicate(true),
 		"run_result": sim.run_result.duplicate(true),
+		"hustle": sim.hustle,
+		"call_ahead_left": sim.call_ahead_left,
+		"green_wave_until": sim.green_wave_until,
+		"demand_boost": sim.demand_boost,
+		"morning_event": sim.morning_event.duplicate(true),
 	}
 	# Every parcel the sim still knows about, stored once and referenced by id.
 	var parcels := {}
@@ -173,6 +178,11 @@ static func load_slot(slot: int) -> Sim:
 	sim.lease_debt = d.get("lease_debt", 0.0)
 	sim.run_stats.merge(d.get("run_stats", {}), true)
 	sim.run_result = d.get("run_result", {})
+	sim.hustle = d.get("hustle", 0)
+	sim.call_ahead_left = d.get("call_ahead_left", 0)
+	sim.green_wave_until = d.get("green_wave_until", -1.0)
+	sim.demand_boost = d.get("demand_boost", 1.0)
+	sim.morning_event = d.get("morning_event", {})
 
 	var parcels := {}
 	for id in d["parcels"].keys():

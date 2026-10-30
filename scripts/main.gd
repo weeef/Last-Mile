@@ -21,6 +21,10 @@ var _settings_menu: SettingsMenu = null
 var _tutorial: Tutorial = null
 var _want_tutorial := false
 var profile := Profile.load_or_new()
+var skipping := false         # fast-forward until something needs the player
+var _skip_ready := 0
+const SKIP_SPEED := 16
+const SKIP_STOP_EVENTS := ["rush_order", "breakdown", "job_arrived", "van_home", "streak_broken", "contract_done", "route_combo", "route_bust"]
 
 
 func _ready() -> void:
@@ -185,6 +189,8 @@ func save_game() -> bool:
 func _on_sim_event(n: String, _d: Dictionary) -> void:
 	if not started:
 		return
+	if skipping and n in SKIP_STOP_EVENTS:
+		_stop_skip()
 	match n:
 		"morning":
 			save_game()
@@ -229,6 +235,14 @@ func _show_phase_overlay() -> void:
 func _process(delta: float) -> void:
 	if not started:
 		cam.rotate_by(delta * 2.5)   # slow orbit behind the title screen
+	if skipping:
+		var ready := _ready_count()
+		if sim.phase != Sim.Phase.DAY:
+			skipping = false      # the evening sheet already stopped the clock
+		elif ready > _skip_ready:
+			_stop_skip()
+		else:
+			_skip_ready = ready
 	if started and sim.phase == Sim.Phase.NIGHT:
 		# The night shift runs on its own: fast-forward to the next morning.
 		var k := 0
@@ -280,6 +294,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_speed(4)
 			KEY_4:
 				set_speed(8)
+			KEY_F:
+				skip_ahead()
+			KEY_Z, KEY_X, KEY_C, KEY_V, KEY_B:
+				var key := OS.get_keycode_string(event.keycode)
+				for id in Abilities.ORDER:
+					if Abilities.DATA[id]["key"] == key:
+						hud.use_power(id)
 
 
 # ------------------------------------------------------------- menus
@@ -323,9 +344,37 @@ func open_settings() -> void:
 func set_speed(s: int) -> void:
 	if not started:
 		return
+	skipping = false
 	if s > 0:
 		_last_speed = s
 	speed = s
+
+
+## Mini Metro style: run the clock fast until a decision is waiting.
+func skip_ahead() -> void:
+	if not started or sim.phase != Sim.Phase.DAY:
+		return
+	if skipping:
+		_stop_skip()
+		return
+	var resume := _last_speed
+	_skip_ready = _ready_count()
+	speed = SKIP_SPEED
+	skipping = true
+	_last_speed = resume
+
+
+func _stop_skip() -> void:
+	skipping = false
+	speed = _last_speed
+
+
+func _ready_count() -> int:
+	var n := 0
+	for v in sim.player().vans:
+		if v.ready:
+			n += 1
+	return n
 
 
 func submit_player(cmd: Dictionary) -> void:

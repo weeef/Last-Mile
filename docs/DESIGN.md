@@ -268,3 +268,43 @@ curve of "rent" roguelikes and the meta layer of modern deckbuilders.
 - A short **boss contract** on peak day with its own reward card.
 - Leaderboard upload for the daily seed (the sim is already deterministic).
 - Driver legacy: a driver who survives a season can be "retained" into the next run.
+
+---
+
+## 13. Lessons from the greats, and what we took (v0.6)
+
+The problem with v0.5: between the morning and evening sheets you mostly watched vans.
+The best roguelikes and logistics games keep your hands busy with **small, frequent,
+legible decisions** that compound into big swings. What each one does right, and the
+piece of it we copied:
+
+| Game | What it does right | What Last Mile took |
+|---|---|---|
+| **Balatro** (5M+ sold, GOTY 2024) | Familiar "hands" scored as visible chips × mult; jokers that bend the rules; numbers that explode | **Route hands**: every load scores combos (Sweep, Full Truck, Neighbors…) into a multiplier shown live while you load, paid out with a jackpot pop. **Combo jokers** bend it (Double Down, Postcode Pride) |
+| **Slay the Spire** | Branching risk; "?" event rooms with short stories and hard choices | **Morning dilemmas**: a story card with 2–3 choices most mornings, some of them gambles |
+| **Luck be a Landlord** | Rent that keeps climbing turns every choice into a budget | Already in v0.5: the climbing lease |
+| **Hades** | Active abilities on cooldowns; run-to-run progression with story | **Dispatcher powers** paid with hustle; head office meta (v0.5) |
+| **Vampire Survivors** | A constant drip of tiny power-ups; escalating spectacle | Hustle from every drop, streak tiers, pay pops that grow and heat up with the streak |
+| **Overcooked / Diner Dash** | Use-it-or-lose-it pressure; many small jobs at once | Hustle is capped at 10, so hoarding wastes it |
+| **Into the Breach / FTL** | Threats telegraphed before they hit; perfect information | Weekly twists announced days ahead; route sheet predicts late / not-home and warns "a late stop will bust this hand" |
+| **Mini Metro / Mini Motorways** | Tiny rule set, weekly upgrade pick, pressure until collapse, short sessions | Evening card draft, rent pressure, and **Skip ahead**: fast-forward that stops the moment a decision is waiting |
+| **Factorio / OpenTTD** | Optimisation you can see; "one more fix" | Route sheet as a puzzle: reorder, swap parcels, chase the bigger hand |
+| **The Binding of Isaac** (10M+ sold) | Huge item pool with wild synergies | Cards now combine across four systems: vehicle mods, streak, rent, combos |
+
+### Rules this added to our design
+
+1. **Every 10–20 seconds the player should have something to decide.** Skip ahead takes
+   away the empty stretches; hustle powers fill the middle of a route.
+2. **Show the math.** The route hand, streak multiplier and rent meter are always on
+   screen, so players can plan around them.
+3. **Push your luck, with a fair warning.** A bigger hand is worth more and is easier
+   to bust. The game tells you before you press Send.
+4. **Stack multipliers from different systems** (streak × route hand × cards) so good
+   runs feel explosive, while rent keeps rising to match.
+
+### What to watch in playtests
+
+- If routes are almost always clean, raise the risk (more windows, tighter promises)
+  or lower combo values in `combos.gd`.
+- If hustle piles up unused, the powers are too weak or too expensive (`abilities.gd`).
+- If players never pick the risky dilemma options, make the upside bigger.

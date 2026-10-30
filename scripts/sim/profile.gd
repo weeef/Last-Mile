@@ -24,6 +24,7 @@ const UPGRADE_ORDER := ["till", "landlord", "dice", "scout", "hype", "grace", "s
 const GOALS := [
 	{"id": "lease1", "name": "Rent day", "desc": "Pay your first lease.", "rep": 5},
 	{"id": "stars3", "name": "Gold star", "desc": "Finish a day with 3 stars.", "rep": 5},
+	{"id": "combo2", "name": "Full house", "desc": "Cash a clean run at x2.0 or better.", "rep": 6},
 	{"id": "streak10", "name": "On a roll", "desc": "Reach a 10 delivery streak.", "rep": 5},
 	{"id": "day40", "name": "Busy bee", "desc": "Deliver 40 parcels in one day.", "rep": 6},
 	{"id": "fleet4", "name": "Fleet manager", "desc": "Run 4 vehicles at once.", "rep": 6},
@@ -33,6 +34,7 @@ const GOALS := [
 	{"id": "win", "name": "Season survivor", "desc": "Survive a whole season.", "rep": 15},
 	{"id": "day80", "name": "Parcel storm", "desc": "Deliver 80 parcels in one day.", "rep": 12},
 	{"id": "fleet7", "name": "Small empire", "desc": "Run 7 vehicles at once.", "rep": 12},
+	{"id": "combo3", "name": "Royal flush", "desc": "Cash a clean run at x3.0 or better.", "rep": 15},
 	{"id": "heat3", "name": "Feeling the heat", "desc": "Win a season at heat 3 or higher.", "rep": 20},
 	{"id": "charters3", "name": "Franchise", "desc": "Win with 3 different charters.", "rep": 25},
 	{"id": "heat6", "name": "Furnace", "desc": "Win a season at heat 6 or higher.", "rep": 30},
@@ -201,6 +203,10 @@ func _goal_met(id: String, r: Dictionary) -> bool:
 			return r.get("three_star_days", 0) >= 1
 		"streak10":
 			return r.get("best_streak", 0) >= 10
+		"combo2":
+			return r.get("best_combo", 0.0) >= 2.0
+		"combo3":
+			return r.get("best_combo", 0.0) >= 3.0
 		"streak25":
 			return r.get("best_streak", 0) >= 25
 		"day40":

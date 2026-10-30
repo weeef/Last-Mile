@@ -10,6 +10,8 @@ extends RefCounted
 ##   promise_add (+minutes), mood_now (+instant), share_now (+instant)
 ##   streaks + season: streak_guard (flag), second_wind (flag), streak_cap (+add), streak_floor (+add),
 ##   tip_jar (flag), lease (mult), interest_cap (+add)
+##   route combos (see Combos): combo_full, combo_sweep, combo_street, combo_all (+add), combo_double (flag)
+##   hustle: hustle_cap (+add), hustle_morning (+add)
 
 enum Rarity { COMMON, UNCOMMON, RARE, ULTRA }
 const RARITY_NAMES := ["Common", "Uncommon", "Rare", "Ultra rare"]
@@ -50,6 +52,13 @@ const DATA := {
 	&"second_wind": {"name": "Second Wind", "rarity": 1, "kind": "company", "desc": "A late parcel halves your streak instead of ending it.", "fx": {"second_wind": 1}},
 	&"haggler": {"name": "Lease Haggler", "rarity": 1, "kind": "company", "desc": "Every lease payment is 15% cheaper.", "fx": {"lease": 0.85}, "season": true},
 	&"hype_train": {"name": "Hype Train", "rarity": 2, "kind": "company", "desc": "Streak cap 25 to 40: up to x2.6 pay.", "fx": {"streak_cap": 15.0}},
+	# ---- route combo "jokers" and hustle
+	&"loading_boss": {"name": "Loading Bay Boss", "rarity": 0, "kind": "company", "desc": "Full Truck combos are worth +0.4 more.", "fx": {"combo_full": 0.4}},
+	&"espresso": {"name": "Espresso Machine", "rarity": 0, "kind": "company", "desc": "+4 max hustle, and start every day with +3 hustle.", "fx": {"hustle_cap": 4.0, "hustle_morning": 3.0}},
+	&"postcode_pride": {"name": "Postcode Pride", "rarity": 1, "kind": "company", "desc": "Sweep combos (one district) are worth +0.6 more.", "fx": {"combo_sweep": 0.6}},
+	&"block_party": {"name": "Block Party", "rarity": 1, "kind": "company", "desc": "Neighbors combos are worth double.", "fx": {"combo_street": 0.1}},
+	&"ace_courier": {"name": "Ace Courier", "rarity": 2, "kind": "company", "desc": "Every route gets +0.3 multiplier, even with no combo.", "fx": {"combo_all": 0.3}},
+	&"double_down": {"name": "Double Down", "rarity": 3, "kind": "company", "desc": "Clean runs with 3+ combos pay their bonus twice.", "fx": {"combo_double": 1}},
 	&"golden_hour": {"name": "Golden Hour", "rarity": 3, "kind": "company", "desc": "Once past 10, your streak never drops below 10.", "fx": {"streak_floor": 10.0}},
 }
 

@@ -11,6 +11,14 @@ var main: Node
 func setup(p_sim: Sim, p_main: Node) -> void:
 	sim = p_sim
 	main = p_main
+	sim.event.connect(func(n: String, _d: Dictionary):
+		if n == "event_resolved" and is_inside_tree():
+			_build())
+	_build()
+
+
+func _build() -> void:
+	ModalSheet.clear(body)
 	var top := UIKit.hbox(12)
 	var tv := UIKit.vbox(-6)
 	tv.add_child(UIKit.label("07:00 · MAPLE ST. DEPOT", 13, Palette.TEXT_SOFT, "head"))
@@ -24,6 +32,9 @@ func setup(p_sim: Sim, p_main: Node) -> void:
 	body.add_child(top)
 	if sim.season_on():
 		body.add_child(_season_strip())
+	var pending := not sim.morning_event.is_empty() and not sim.morning_event.get("done", false)
+	if not sim.morning_event.is_empty():
+		body.add_child(_event_box())
 
 	# Conditions
 	var cond := UIKit.hbox(10)
@@ -39,13 +50,14 @@ func setup(p_sim: Sim, p_main: Node) -> void:
 	body.add_child(cond)
 	body.add_child(UIKit.rule())
 	body.add_child(UIKit.head("Pick today's contract", 22, Palette.TEXT))
-	var sub := UIKit.label("Finish it by 21:00 for cash and a better pick of upgrade cards tonight.", 13, Palette.TEXT_SOFT)
+	var sub := UIKit.label("Finish it by 21:00 for cash and a better pick of upgrade cards tonight." if not pending else "Deal with this morning's situation first.", 13, Palette.TEXT_SOFT if not pending else Palette.RED)
 	body.add_child(sub)
 	var row := UIKit.hbox(12)
 	for i in sim.contract_offers.size():
-		row.add_child(_contract_ticket(i, sim.contract_offers[i]))
+		row.add_child(_contract_ticket(i, sim.contract_offers[i], pending))
 	body.add_child(row)
 	var skip := UIKit.button("No contract today", "paper", 14)
+	skip.disabled = pending
 	skip.size_flags_horizontal = Control.SIZE_SHRINK_END
 	skip.pressed.connect(func(): main.submit_player({"type": "pick_contract", "index": -1}))
 	body.add_child(skip)
@@ -102,6 +114,50 @@ func _season_strip() -> Control:
 	return p
 
 
+## Today's dilemma (Events): a story and two or three choices.
+func _event_box() -> Control:
+	var ev: Dictionary = sim.morning_event
+	var data := Events.get_event(ev["id"])
+	var done: bool = ev.get("done", false)
+	var p := PanelContainer.new()
+	var st := UIKit.paper_style(Palette.PAPER, 12, 5)
+	st.border_color = Palette.PURPLE
+	st.border_width_left = 8
+	p.add_theme_stylebox_override("panel", st)
+	var v := UIKit.vbox(6)
+	p.add_child(v)
+	var h := UIKit.hbox(10)
+	h.add_child(UIKit.stamp("This morning", Palette.PURPLE, 12))
+	h.add_child(UIKit.head(data["title"], 20, Palette.TEXT))
+	v.add_child(h)
+	var t := UIKit.label(data["text"], 14, Palette.TEXT)
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	t.custom_minimum_size.x = 640
+	v.add_child(t)
+	if done:
+		v.add_child(UIKit.label(ev.get("result", ""), 14, Palette.GREEN, "bold"))
+		return p
+	var row := UIKit.hbox(10)
+	var opts: Array = data["options"]
+	for i in opts.size():
+		var o: Dictionary = opts[i]
+		var cost := Events.cost(ev["id"], i, sim.player().vans.size())
+		var ov := UIKit.vbox(2)
+		ov.custom_minimum_size.x = 210
+		var b := UIKit.button(o["label"] + ("  %s" % UIKit.money(cost) if cost > 0.0 else ""), "go" if i == 0 else "paper", 15)
+		b.disabled = sim.player().money < cost
+		var idx := i
+		b.pressed.connect(func(): main.submit_player({"type": "pick_event", "index": idx}))
+		ov.add_child(b)
+		var d := UIKit.label(o["desc"], 12, Palette.TEXT_SOFT)
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.custom_minimum_size.x = 210
+		ov.add_child(d)
+		row.add_child(ov)
+	v.add_child(row)
+	return p
+
+
 func _weather_note() -> String:
 	match sim.weather:
 		1:
@@ -134,7 +190,7 @@ func _info_box(title: String, value: String, note: String) -> Control:
 	return p
 
 
-func _contract_ticket(i: int, c: Dictionary) -> Control:
+func _contract_ticket(i: int, c: Dictionary, locked := false) -> Control:
 	var tier: Dictionary = Contracts.TIERS[c["tier"]]
 	var col: Color = [Palette.GREEN, Palette.BLUE, Palette.ORANGE][c["tier"]]
 	var p := PanelContainer.new()
@@ -156,6 +212,7 @@ func _contract_ticket(i: int, c: Dictionary) -> Control:
 	b.custom_minimum_size.x = 184
 	v.add_child(b)
 	var take := UIKit.button("Take it", "go", 16)
+	take.disabled = locked
 	take.pressed.connect(func(): main.submit_player({"type": "pick_contract", "index": i}))
 	v.add_child(take)
 	return p

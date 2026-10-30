@@ -105,6 +105,7 @@ func build(rng: RandomNumberGenerator) -> void:
 						"face": face,
 						"district": district_of(blk),
 						"address": "%d %s" % [number, STREET_NAMES[road_j]],
+						"street": STREET_NAMES[road_j],
 						"color": rng.randi_range(0, Palette.HOUSE_COLORS.size() - 1),
 						"floors": 2 if rng.randf() < 0.3 else 1,
 						"block": blk,

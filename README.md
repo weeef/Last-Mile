@@ -1,4 +1,4 @@
-# Last Mile — Prototype v0.5
+# Last Mile — Prototype v0.6
 
 A cozy-but-moody 3D logistics game about growing a tiny delivery outfit.
 Open this folder in **Godot 4.7** and press **F5**.
@@ -26,6 +26,27 @@ Every new game is a **12-day season** on a fresh, randomly seeded town.
   the floating pay numbers grow hotter as it climbs.
 - **Savings interest.** Each evening you earn $5 per $100 in the till (up to $25), so
   hoarding for rent pays a little, and spending has a cost.
+
+### You play the dispatcher, not the traffic
+
+- **Route hands (Balatro-style).** Every load you send out is scored like a poker hand,
+  and the route sheet shows it live while you load: **Full Truck**, **Sweep** (one
+  district), **Neighbors** (stops sharing a street), **Big/Mega Haul**, **Express Run**,
+  **Mixed Bag**, **Signed & Sealed**. Combos add to a route multiplier. Bring the whole
+  route back with zero late parcels and its on-time pay is paid again × (mult − 1),
+  with a jackpot pop over the van. One late stop **busts** the hand, so a bigger hand
+  carries a bigger risk.
+- **Hustle and dispatcher powers.** Every on-time drop earns 1 hustle (+2 on streak tiers),
+  capped at 10, so you use it or lose it. Spend it on **Floor It** (Z), **Rush the Line**
+  (X), **Call Ahead** (C), **Green Wave** (V) and **Sweet Talk** (B).
+- **Morning dilemmas (Slay the Spire "?" rooms).** From day 2, each briefing opens with a
+  situation and two or three choices: a dodgy used van, a crew asking for a raise, an
+  influencer, a card trader, double or nothing, the landlord's nephew…
+- **Skip ahead (F).** Mini Metro-style fast forward that stops by itself as soon as
+  something needs you: a van ready to send, a rush order, a breakdown, a vendor drop-off,
+  a route paying out.
+- **Combo jokers.** Loading Bay Boss, Postcode Pride, Block Party, Ace Courier, Espresso
+  Machine and the ultra rare **Double Down**.
 
 ### Charters and heat
 
@@ -141,6 +162,8 @@ Settings are saved to `user://settings.cfg`.
 | Pause / resume | Space |
 | Pause menu | Esc (when nothing is selected) |
 | Speed 1x / 2x / 4x / 8x | 1 / 2 / 3 / 4 |
+| Skip ahead until needed | F |
+| Floor It / Rush the Line / Call Ahead / Green Wave / Sweet Talk | Z / X / C / V / B |
 
 ## Code layout
 
@@ -159,6 +182,9 @@ scripts/
     cards.gd            Upgrade cards, rarities and the draft roll
     contracts.gd        Daily contracts
     season.gd           The run: rent schedule, twists, charters, heat, streak tuning, score
+    combos.gd           Route hands: combo detection and multipliers
+    abilities.gd        Dispatcher powers and hustle tuning
+    events.gd           Morning dilemmas
     profile.gd          Persistent meta-progression: reputation, HQ upgrades, goals, daily streak
     parcel.gd, driver.gd, traits.gd, company.gd, rival_ai.gd
   view/                 3D town built from primitives (world_view.gd), camera, palette

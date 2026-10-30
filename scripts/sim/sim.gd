@@ -74,8 +74,15 @@ var week_twist := ""             # the twist waiting on this week's due day
 var streak := 0                  # on-time deliveries in a row (player)
 var lease_strikes := 0
 var lease_debt := 0.0
-var run_stats := {"best_streak": 0, "leases_paid": 0, "max_fleet": 0, "best_day": 0, "three_star_days": 0}
+var run_stats := {"best_streak": 0, "leases_paid": 0, "max_fleet": 0, "best_day": 0, "three_star_days": 0, "best_combo": 0.0, "combo_cash": 0.0}
 var run_result := {}
+
+# Dispatcher layer: hustle powers and morning events
+var hustle := 0
+var call_ahead_left := 0
+var green_wave_until := -1.0
+var demand_boost := 1.0          # today's walk-in demand multiplier from events
+var morning_event := {}          # {"id", "done", "result"}
 
 
 func setup(p_seed: int, start_fleet: Array, p_run := {}) -> void:
@@ -173,6 +180,7 @@ func hour_curve(h: float) -> float:
 
 func demand_per_hour() -> float:
 	var w := 1.15 if weather == 1 else 1.0
+	w *= demand_boost
 	if twist == "viral":
 		w *= 1.6
 	if is_peak_day():
@@ -375,6 +383,12 @@ func _process_commands() -> void:
 				c.max_wait = clampf(cmd["value"], 5.0, 60.0)
 			"set_auto_service":
 				c.auto_service = clampf(cmd["value"], 0.0, 0.8)
+			"ability":
+				if c.id == PLAYER and phase == Phase.DAY:
+					_use_ability(c, cmd["ability"], cmd.get("van", -1), now)
+			"pick_event":
+				if c.id == PLAYER and phase == Phase.MORNING and not morning_event.is_empty() and not morning_event.get("done", false):
+					_resolve_event(c, cmd["index"])
 
 
 func _add_van(c: Company, t: StringName) -> Van:
@@ -508,6 +522,7 @@ func _bump_streak(c: Company) -> float:
 	run_stats["best_streak"] = maxi(run_stats["best_streak"], streak)
 	c.counters["streak_peak"] = maxi(c.counters.get("streak_peak", 0), streak)
 	if streak in Season.STREAK_TIERS and streak <= streak_cap():
+		_gain_hustle(2)
 		notice.emit("%s! %d on time in a row: deliveries pay x%.2f" % [Season.STREAK_NAMES[streak], streak, streak_mult()], "streak")
 		event.emit("streak_tier", {"streak": streak})
 	if c.has_perk_fx("tip_jar"):
@@ -609,6 +624,10 @@ func _begin_morning(first := false) -> void:
 			has_heavy = true
 	contract_offers = Contracts.roll(rng, day(), maxi(1, p.vans.size()), has_heavy)
 	_roll_twists()
+	demand_boost = 1.0
+	green_wave_until = -1.0
+	_roll_event()
+	_gain_hustle(int(p.perk_add("hustle_morning")))
 	event.emit("morning", {})
 
 
@@ -1003,7 +1022,10 @@ func _step_van(c: Company, v: Van, now: float) -> void:
 			v.timer -= MIN_PER_TICK
 			if v.timer <= 0.0:
 				var p: Parcel = v.cargo.pop_front()
-				if p.window_start > 0.0 and now < p.window_start:
+				var called := c.id == PLAYER and call_ahead_left > 0 and p.window_start > 0.0 and now < p.window_start
+				if called:
+					call_ahead_left -= 1
+				if p.window_start > 0.0 and now < p.window_start and not called:
 					_not_home(c, v, p)
 				else:
 					_deliver(c, v, p, now)
@@ -1064,8 +1086,180 @@ func _step_van(c: Company, v: Van, now: float) -> void:
 func _van_speed(v: Van) -> float:
 	var cond_mult := 0.85 + 0.15 * v.condition   # worn vans are sluggish
 	var gps := v.fx("gps") if v.route_total >= 5 else 1.0
+	var boost := Abilities.FLOOR_IT_MULT if minutes() < v.boost_until else 1.0
 	return Van.BASE_SPEED * v.spec()["speed"] * v.fx("speed") * gps * v.driver.speed_mult(minute_of_day()) \
-		* cond_mult * traffic_mult()
+		* cond_mult * traffic_for(v.company) * boost
+
+
+## Traffic as one company sees it (Green Wave lifts it for the player).
+func traffic_for(cid: int) -> float:
+	if cid == PLAYER and green_wave_active():
+		return 1.1
+	return traffic_mult()
+
+
+func green_wave_active() -> bool:
+	return minutes() < green_wave_until
+
+
+func hustle_cap() -> int:
+	return Abilities.BASE_CAP + int(companies[PLAYER].perk_add("hustle_cap"))
+
+
+## Dispatcher powers. Returns quietly if it can't be used.
+func _use_ability(c: Company, id: String, van_id: int, now: float) -> void:
+	if not Abilities.DATA.has(id):
+		return
+	var cost: int = Abilities.DATA[id]["cost"]
+	if hustle < cost:
+		return
+	match id:
+		"floor_it":
+			var v := _find_van(c, van_id)
+			if v == null or not (v.state in [Van.State.EN_ROUTE, Van.State.DELIVERING, Van.State.RETURNING, Van.State.RESCUE]):
+				return
+			v.boost_until = now + Abilities.FLOOR_IT_MIN
+			notice.emit("%s floors it!" % v.code, "combo")
+		"rush_sort":
+			if c.sorting.is_empty():
+				return
+			var n := c.sorting.size()
+			for p in c.sorting:
+				p.set_stage(Parcel.Stage.SORTED, now)
+				c.waiting.append(p)
+			c.sorting.clear()
+			notice.emit("Sort crew sprints: %d parcels ready to load" % n, "combo")
+		"call_ahead":
+			call_ahead_left += Abilities.CALL_AHEAD_DROPS
+			notice.emit("Calling ahead: the next %d customers will be home" % call_ahead_left, "combo")
+		"green_wave":
+			green_wave_until = maxf(green_wave_until, now) + Abilities.GREEN_WAVE_MIN
+			notice.emit("Green wave! Every light turns green for your vehicles", "combo")
+		"sweet_talk":
+			var n := 0
+			var lists: Array = [c.sorting, c.waiting]
+			for v in c.vans:
+				lists.append(v.cargo)
+			for list in lists:
+				for p in list:
+					if not p.late and p.deadline > now:
+						p.deadline += Abilities.SWEET_TALK_MIN
+						n += 1
+			if n == 0:
+				return
+			notice.emit("You sweet-talked %d customers into waiting a bit longer" % n, "combo")
+	hustle -= cost
+	event.emit("ability", {"ability": id})
+
+
+func _gain_hustle(amount: int) -> void:
+	hustle = mini(hustle + amount, hustle_cap())
+
+
+## Morning dilemma from Events. Effects that roll dice use sim.rng.
+func _roll_event() -> void:
+	morning_event = {}
+	if not season_on() or day() < 2:
+		return
+	var id: String = Events.ORDER[rng.randi_range(0, Events.ORDER.size() - 1)]
+	morning_event = {"id": id, "done": false, "result": ""}
+
+
+func _resolve_event(c: Company, i: int) -> void:
+	var id: String = morning_event["id"]
+	var opts: Array = Events.get_event(id)["options"]
+	if i < 0 or i >= opts.size():
+		return
+	var cost := Events.cost(id, i, c.vans.size())
+	if c.money < cost:
+		return
+	c.money -= cost
+	var result := ""
+	match id + ":" + str(i):
+		"used_van:0":
+			if c.vans.size() < c.fleet_cap():
+				var v := _add_van(c, &"van")
+				v.condition = 0.35
+				run_stats["max_fleet"] = maxi(run_stats["max_fleet"], c.vans.size())
+				result = "%s joins the team in a rattly van." % v.driver.name
+			else:
+				c.money += cost
+				result = "No room in the fleet. Del shrugs and leaves."
+		"raise:0":
+			for v in c.vans:
+				v.driver.change_mood(20.0)
+			result = "The crew cheers."
+		"raise:1":
+			for v in c.vans:
+				v.driver.change_mood(8.0)
+			result = "Pizza helps. A little."
+		"raise:2":
+			for v in c.vans:
+				v.driver.change_mood(-15.0)
+			result = "Grumbling in the break room."
+		"influencer:0":
+			if rng.randf() < 0.5:
+				for d in 4:
+					share[d] = clampf(share[d] + 0.06, 0.1, 0.9)
+				result = "The video blows up! Walk-in share +6%."
+			else:
+				for d in 4:
+					share[d] = clampf(share[d] - 0.04, 0.1, 0.9)
+				result = "The blooper reel is all anyone talks about. Share -4%."
+		"card_trader:0", "card_trader:1":
+			var picks := Cards.roll(rng, 1, 0, c.perks, true, 2 if i == 0 else 0, season_on())
+			if picks.is_empty():
+				c.money += cost
+				result = "The binder is empty."
+			else:
+				var target := c.vans[0]
+				for v in c.vans:
+					if v.mods.size() < target.mods.size():
+						target = v
+				_apply_card(c, picks[0], target.id)
+				result = "You got %s%s." % [Cards.get_card(picks[0])["name"], (" for " + target.code) if Cards.is_vehicle(picks[0]) else ""]
+		"nephew:0":
+			lease_debt -= roundf(Season.LEASES[Season.week_of(day())] * 0.15)
+			result = "He's mostly harmless. Rent is cheaper this week."
+		"open_day:0":
+			for v in c.vans:
+				if v.state in [Van.State.IDLE, Van.State.LOADING]:
+					v.condition = maxf(v.condition, 0.9)
+			result = "Everything purrs."
+		"mall_sale:0":
+			demand_boost = 1.3
+			result = "Flyers everywhere. Expect a busy day."
+		"zoomer_offer:0":
+			var worst: Van = null
+			for v in c.vans:
+				if v.state == Van.State.IDLE and v.cargo.is_empty() and (worst == null or v.condition < worst.condition):
+					worst = v
+			if worst == null or c.vans.size() <= 1:
+				result = "Nothing parked to sell."
+			else:
+				c.vans.erase(worst)
+				c.money += VehicleTypes.DATA[worst.type]["cost"] * 0.9
+				van_removed.emit(worst)
+				result = "Sold %s to Zoomer for %s." % [worst.code, "$%d" % int(VehicleTypes.DATA[worst.type]["cost"] * 0.9)]
+		"gambler:0":
+			if rng.randf() < 0.5:
+				c.money += 2.0 * cost
+				result = "Heads! You win $100."
+			else:
+				result = "Tails. There goes $100."
+		"coach:0":
+			hustle = hustle_cap()
+			result = "You feel unstoppable. Hustle full."
+		"horseshoe:0":
+			streak += 5
+			run_stats["best_streak"] = maxi(run_stats["best_streak"], streak)
+			result = "Your streak is now %d." % streak
+		_:
+			result = "Nothing happens."
+	morning_event["done"] = true
+	morning_event["choice"] = i
+	morning_event["result"] = result
+	event.emit("event_resolved", morning_event)
 
 
 func _nearest_neighbor(list: Array, start: int) -> Array[Parcel]:
@@ -1101,11 +1295,21 @@ func _depart(c: Company, v: Van, now: float, from_node: int) -> void:
 	v.ready = false
 	for p in v.cargo:
 		p.set_stage(Parcel.Stage.OUT, now)
+	if c.id == PLAYER:
+		var hand := Combos.evaluate(city, v.cargo, v, c)
+		v.route_mult = hand["mult"]
+		v.route_hits = hand["hits"].map(func(h): return h["name"])
+		v.route_base = 0.0
+		v.route_clean = true
+		if v.route_mult > 1.0:
+			notice.emit("%s heads out holding %s (x%.1f)" % [v.code, " + ".join(v.route_hits), v.route_mult], "combo")
 	_go_to_next(c, v)
 	event.emit("van_departed", {"van": v})
 
 
 func _go_to_next(c: Company, v: Van) -> void:
+	if v.cargo.is_empty() and c.id == PLAYER and v.route_total > 0:
+		_cash_route(c, v)
 	if v.cargo.is_empty():
 		v.target_node = c.depot_node
 		v.set_path(city.path(v.node, c.depot_node))
@@ -1114,6 +1318,36 @@ func _go_to_next(c: Company, v: Van) -> void:
 		v.target_node = city.houses[v.cargo[0].house]["curb"]
 		v.set_path(city.path(v.node, v.target_node))
 		v.state = Van.State.EN_ROUTE
+
+
+## End of a route: a clean run pays its combo bonus, a late parcel busts it.
+func _cash_route(c: Company, v: Van) -> void:
+	if v.route_mult > 1.0 and v.route_base > 0.0:
+		if v.route_clean:
+			var bonus := v.route_base * (v.route_mult - 1.0)
+			if v.route_hits.size() >= 3 and c.has_perk_fx("combo_double"):
+				bonus *= 2.0
+			bonus = roundf(bonus)
+			c.money += bonus
+			c.revenue_today += bonus
+			c.lifetime_revenue += bonus
+			c.count("revenue", bonus)
+			run_stats["best_combo"] = maxf(run_stats["best_combo"], v.route_mult)
+			run_stats["combo_cash"] += bonus
+			notice.emit("%s CLEAN RUN: $%d x%.1f = +$%d bonus" % [v.code, int(v.route_base), v.route_mult, int(bonus)], "combo")
+			event.emit("route_combo", {"van": v, "bonus": bonus, "mult": v.route_mult, "hits": v.route_hits.duplicate()})
+			_check_level(c)
+		else:
+			notice.emit("%s's x%.1f hand busted by a late parcel" % [v.code, v.route_mult], "bad")
+			event.emit("route_bust", {"van": v})
+	_reset_route(v)
+
+
+func _reset_route(v: Van) -> void:
+	v.route_mult = 1.0
+	v.route_hits = []
+	v.route_base = 0.0
+	v.route_clean = true
 
 
 func _not_home(c: Company, v: Van, p: Parcel) -> void:
@@ -1137,10 +1371,13 @@ func _deliver(c: Company, v: Van, p: Parcel, now: float) -> void:
 	var pay := base * (0.3 if p.late else 1.0)
 	if c.id == PLAYER:
 		if p.late:
+			v.route_clean = false
 			_break_streak(c, "late")
 			if twist == "inspector":
 				pay = -10.0
 		else:
+			v.route_base += pay
+			_gain_hustle(1)
 			pay = pay * streak_mult() + _bump_streak(c)
 	c.money += pay
 	c.revenue_today += pay
@@ -1206,7 +1443,7 @@ func _check_level(c: Company) -> void:
 ## status: "ok", "late", or "early" (nobody home yet).
 func estimate_route(v: Van, order: Array, start_node: int, start_time: float) -> Dictionary:
 	var spd: float = Van.BASE_SPEED * v.spec()["speed"] * v.fx("speed") * (v.fx("gps") if order.size() >= 5 else 1.0) \
-		* v.driver.speed_mult(fmod(start_time, 1440.0)) * (0.85 + 0.15 * v.condition) * traffic_mult()
+		* v.driver.speed_mult(fmod(start_time, 1440.0)) * (0.85 + 0.15 * v.condition) * traffic_for(v.company)
 	var t := start_time
 	var at := start_node
 	var stops: Array = []
@@ -1282,6 +1519,7 @@ func _start_tow(c: Company, v: Van, now: float) -> void:
 	v.cargo.clear()
 	v.returns.clear()
 	v.route_total = 0
+	_reset_route(v)
 	var closest := city.astar.get_closest_point(v.pos)
 	var p := PackedVector3Array([v.pos])
 	p.append_array(city.path(closest, city.garage["node"]))

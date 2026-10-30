@@ -42,6 +42,10 @@ var _streak_box: PanelContainer
 var _streak_val: Label
 var _streak_sub: Label
 var _streak_shown := -1
+var _hustle_bar: LMBar
+var _hustle_val: Label
+var _power_btns := {}
+var _skip_btn: Button
 var _detail: PanelContainer
 var _d := {}
 var _detail_van_id := -1
@@ -238,6 +242,7 @@ func _build_stats() -> void:
 	ch.add_child(_contract_val)
 	_place(cp, Control.PRESET_TOP_LEFT, Vector2(16, 176))
 	_build_season()
+	_build_powers()
 	var cond := UIKit.label("", 13, Palette.PAPER, "head")
 	cond.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
 	cond.add_theme_constant_override("shadow_offset_y", 1)
@@ -313,6 +318,77 @@ func _refresh_season() -> void:
 			var tw := create_tween()
 			tw.tween_property(_streak_box, "scale", Vector2(1.12, 1.12), 0.06)
 			tw.tween_property(_streak_box, "scale", Vector2.ONE, 0.14)
+
+
+## Dispatcher powers (spend hustle) and the skip-ahead button.
+func _build_powers() -> void:
+	var p := UIKit.ink(8)
+	var v := UIKit.vbox(5)
+	p.add_child(v)
+	var hh := UIKit.hbox(6)
+	hh.add_child(UIKit.head("Hustle", 14, Palette.AMBER.lightened(0.2)))
+	hh.add_child(UIKit.spacer())
+	_hustle_val = UIKit.mono("", 13, Palette.PAPER, true)
+	hh.add_child(_hustle_val)
+	v.add_child(hh)
+	_hustle_bar = LMBar.new()
+	_hustle_bar.custom_minimum_size = Vector2(176, 10)
+	_hustle_bar.bar_height = 10.0
+	_hustle_bar.color = Palette.AMBER
+	_hustle_bar.back = Palette.INK_3
+	_hustle_bar.ticks = Abilities.BASE_CAP
+	v.add_child(_hustle_bar)
+	var tip := UIKit.label("+1 per on-time drop", 11, Palette.TEXT_INV_SOFT, "head_semi")
+	v.add_child(tip)
+	for id in Abilities.ORDER:
+		var a: Dictionary = Abilities.DATA[id]
+		var b := UIKit.button("%s  %s · %d" % [a["key"], a["name"], a["cost"]], "paper", 14)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.custom_minimum_size = Vector2(176, 30)
+		b.tooltip_text = a["desc"] + ("\nSelect a vehicle on the road first." if a.get("target", false) else "")
+		var key: String = id
+		b.pressed.connect(func(): use_power(key))
+		v.add_child(b)
+		_power_btns[id] = b
+	_skip_btn = UIKit.button("F  Skip ahead >>", "go", 14)
+	_skip_btn.custom_minimum_size = Vector2(176, 32)
+	_skip_btn.tooltip_text = "Run the clock fast until something needs you: a vehicle is ready, a rush order, a breakdown, a delivery from a vendor."
+	_skip_btn.pressed.connect(func(): main.skip_ahead())
+	v.add_child(_skip_btn)
+	_place(p, Control.PRESET_TOP_LEFT, Vector2(16, 292))
+
+
+## Fires a dispatcher power (button or hotkey).
+func use_power(id: String) -> void:
+	var cmd := {"type": "ability", "ability": id}
+	if Abilities.DATA[id].get("target", false):
+		if selected == null:
+			_toast("Select a vehicle on the road first", "info")
+			return
+		cmd["van"] = selected.id
+	main.submit_player(cmd)
+
+
+func _refresh_powers() -> void:
+	var cap := sim.hustle_cap()
+	_hustle_bar.ticks = cap
+	_hustle_bar.value = float(sim.hustle) / cap
+	_hustle_val.text = "%d / %d" % [sim.hustle, cap]
+	var day := sim.phase == Sim.Phase.DAY
+	for id in _power_btns.keys():
+		var b: Button = _power_btns[id]
+		var a: Dictionary = Abilities.DATA[id]
+		var ok: bool = day and sim.hustle >= a["cost"]
+		if a.get("target", false):
+			ok = ok and selected != null and selected.state in [Van.State.EN_ROUTE, Van.State.DELIVERING, Van.State.RETURNING, Van.State.RESCUE]
+		b.disabled = not ok
+	var extra := ""
+	if sim.green_wave_active():
+		extra = "  ·  GREEN WAVE"
+	if sim.call_ahead_left > 0:
+		extra += "  ·  CALL AHEAD %d" % sim.call_ahead_left
+	_hustle_val.text += extra
+	_skip_btn.text = "F  Skipping... (F to stop)" if main.skipping else "F  Skip ahead >>"
 
 
 # ============================================================= tools
@@ -1296,7 +1372,7 @@ func _build_overlay() -> void:
 
 
 func _toast(text: String, kind: String) -> void:
-	var colors := {"info": Palette.BLUE, "good": Palette.GREEN, "rival": Palette.PURPLE, "bad": Palette.RED, "rush": Palette.ORANGE, "streak": Palette.AMBER}
+	var colors := {"info": Palette.BLUE, "good": Palette.GREEN, "rival": Palette.PURPLE, "bad": Palette.RED, "rush": Palette.ORANGE, "streak": Palette.AMBER, "combo": Palette.BLUE.lightened(0.15)}
 	var c: Color = colors.get(kind, Palette.BLUE)
 	var p := PanelContainer.new()
 	var st := UIKit.paper_style(Palette.PAPER, 10, 4)
@@ -1336,7 +1412,7 @@ func _refresh_tag(cam: Camera3D, world: WorldView) -> void:
 		return
 	_tag.visible = true
 	_tag_code.text = selected.code
-	_tag_state.text = selected.status_name().to_upper()
+	_tag_state.text = selected.status_name().to_upper() + ("  x%.1f" % selected.route_mult if selected.route_mult > 1.0 and selected.on_road() else "")
 	_tag_state.add_theme_color_override("font_color", _state_color(selected).lightened(0.3))
 	_tag.position = cam.unproject_position(wp) - Vector2(_tag.size.x * 0.5, _tag.size.y)
 
@@ -1428,6 +1504,7 @@ func refresh(speed: int, cam: Camera3D, world: WorldView) -> void:
 	_stats["fleet"]["sub"].text = "%d ready · %d in shop" % [ready, shop]
 
 	_refresh_season()
+	_refresh_powers()
 	_refresh_detail()
 	_refresh_tracking()
 	_refresh_fleet()
