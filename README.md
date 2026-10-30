@@ -1,4 +1,4 @@
-# Last Mile — Prototype v0.2
+# Last Mile — Prototype v0.3
 
 A cozy-but-moody 3D logistics game about growing a tiny delivery outfit.
 Open this folder in **Godot 4.7** and press **F5**.
@@ -37,7 +37,18 @@ The tutorial (offered on the start screen) walks through steps 2–4.
 Corner Pantry (start) · Sunrise Bakery · Oak & Iron (furniture, needs a box truck)
 · Bloom & Co. · Byte Electronics · Pharma Plus. Better vendors pack faster and pay more.
 
-## Settings (Esc or the gear button)
+## Title screen and saves
+
+The game opens on a title screen: **Continue** (most recent save), **New game**,
+**Load game**, **Settings**, **Quit**. There are **3 save slots**. The game autosaves
+at the start of every in-game day, when you leave to the menu, and when you quit.
+**Esc** in game opens the pause menu (resume, save, settings, main menu, quit).
+
+Saves store the full game state (fleet, drivers, parcels in flight, jobs, garage
+queue, RNG state), so loading is instant and continues exactly where you left off.
+Files live in Godot's `user://` folder (`save_1.sav` … `save_3.sav`).
+
+## Settings (pause menu, title screen, or the gear button)
 
 Window mode, resolution, UI scale, VSync and FPS limit, plus a **Low / Medium / High**
 graphics preset (3D render scale, anti-aliasing, shadows, fog, scenery detail).
@@ -56,7 +67,7 @@ Settings are saved to `user://settings.cfg`.
 | Reset view | H |
 | Select a vehicle | Click it, or click its row in FLEET |
 | Pause / resume | Space |
-| Settings | Esc (when nothing is selected) |
+| Pause menu | Esc (when nothing is selected) |
 | Speed 1x / 2x / 4x / 8x | 1 / 2 / 3 / 4 |
 
 ## Code layout
@@ -72,13 +83,16 @@ scripts/
     vehicle_types.gd    Van / Box Truck / Sprinter stats
     vendors.gd          Vendor list + business levels
     job.gd              A vendor delivery order
+    save_game.gd        3-slot save/load of the full game state
     parcel.gd, driver.gd, traits.gd, company.gd, rival_ai.gd
   view/                 3D town built from primitives (world_view.gd), camera, palette
-  ui/                   Dispatcher's-desk UI: hud.gd, start_screen.gd, tutorial.gd, widgets
+  ui/                   Dispatcher's-desk UI: hud, title, pause, settings, start screen, tutorial, widgets
+  settings/             Display + graphics settings and GPU-based preset detection
 fonts/                  Barlow, Barlow Condensed, IBM Plex Mono (SIL Open Font License)
 tools/
   sim_test.gd           Headless 3-day run with a scripted player + determinism check
-  screenshot.gd         Renders a PNG (modes: picker, tutorial, play, wide)
+  save_test.gd          Save mid-game, load, run both forward and check they match
+  screenshot.gd         Renders a PNG (modes: title, picker, tutorial, play, wide, low, settings)
 ```
 
 ### Multiplayer-ready rules (keep these)

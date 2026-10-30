@@ -714,6 +714,7 @@ func _check_new_day() -> void:
 		for v in c.vans:
 			v.driver.delivered_today = 0
 	notice.emit("Day %d. The town's getting busier." % dnow, "info")
+	event.emit("day_started", {"day": dnow})
 
 
 # ---------------------------------------------------------------- queries

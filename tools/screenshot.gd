@@ -1,7 +1,7 @@
 extends SceneTree
 ## Renders the game and saves a PNG.
 ## Usage: -s tools/screenshot.gd -- out.png <mode> <ticks>
-##   mode: picker | tutorial | play | wide | low | settings
+##   mode: title | picker | tutorial | play | wide | low | settings
 var main: Node
 var frame := 0
 var out := "shot.png"
@@ -16,10 +16,6 @@ func _init() -> void:
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 
-func _picker() -> Node:
-	for c in main.layer.get_children():
-		if c is StartScreen: return c
-	return null
 
 func _process(_d: float) -> bool:
 	frame += 1
@@ -28,12 +24,13 @@ func _process(_d: float) -> bool:
 	if frame == 2 and mode == "low":
 		main.settings.apply_preset(0)
 		main.apply_settings()
-	if frame == 3 and mode != "picker" and mode != "settings":
-		var pk = _picker()
-		pk.picks = [&"van", &"box"]
-		main._on_fleet_chosen([&"van", &"box"], mode == "tutorial", pk)
+	if frame == 2 and mode == "picker":
+		main._on_new_game(1)
+	if frame == 3 and mode not in ["picker", "settings", "title"]:
+		main._on_new_game(1)
+		main._on_fleet_chosen([&"van", &"box"], mode == "tutorial")
 		main.set_speed(0)
-	if frame == 5 and mode != "picker" and mode != "settings":
+	if frame == 5 and mode not in ["picker", "settings", "title"]:
 		var sim: Sim = main.sim
 		var p := sim.player()
 		for i in ticks:
