@@ -6,6 +6,8 @@ signal chosen(vehicles: Array, tutorial: bool)
 signal back_requested
 
 var picks: Array = []
+var cash := 250.0
+var charter_name := "Corner Courier"
 var _slots: Array[Label] = []
 var _start: Button
 var _skip: Button
@@ -38,7 +40,7 @@ func _ready() -> void:
 	v.add_child(top)
 	v.add_child(UIKit.rule())
 	v.add_child(UIKit.head("Pick your first two vehicles", 24, Palette.TEXT))
-	var intro := UIKit.label("You've leased a small depot on Maple St. and have $250 in the till. Zoomer Express runs most of the deliveries in town. You start with two second-hand vehicles; more can be bought as the business grows.", 14, Palette.TEXT)
+	var intro := UIKit.label("%s. You've leased a small depot on Maple St. and have %s in the till. The landlord wants rent every third evening, and Holiday Peak hits on day 12. Zoomer Express runs most of the deliveries in town. You start with two second-hand vehicles; more can be bought as the business grows." % [charter_name, UIKit.money(cash)], 14, Palette.TEXT)
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intro.custom_minimum_size.x = 760
 	v.add_child(intro)

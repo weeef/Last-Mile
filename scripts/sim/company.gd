@@ -56,6 +56,16 @@ func perk(key: String, default := 1.0) -> float:
 	return m
 
 
+## Sum of an additive perk key (streak_cap, streak_floor, interest_cap).
+func perk_add(key: String) -> float:
+	var total := 0.0
+	for id in perks:
+		var f: Dictionary = Cards.DATA[id]["fx"]
+		if f.has(key):
+			total += f[key]
+	return total
+
+
 func has_perk_fx(key: String) -> bool:
 	for id in perks:
 		if Cards.DATA[id]["fx"].has(key):

@@ -211,3 +211,60 @@ Contracts and city policies weight these differently (downtown might cap emissio
 - **Tone:** cozy and colorful, or grounded and realistic? (Cozy widens the audience; the systems can still be deep.)
 - **Competitors:** AI rival companies, or purely you vs. the city?
 - **Workers:** are drivers just a cost, or characters with names and traits (RimWorld-style attachment)?
+
+---
+
+## 12. The run and the reasons to come back (v0.5)
+
+The 400-hour sandbox above is the long game. What it lacked was a **session shape**:
+a reason to start, stakes in the middle, a clear end, and a reason to start again.
+v0.5 adds a roguelike run on top of the existing day loop, borrowing the pressure
+curve of "rent" roguelikes and the meta layer of modern deckbuilders.
+
+### The three loops
+
+| Loop | Length | Question it asks | Reward |
+|---|---|---|---|
+| **Drop** | seconds | Can I keep the streak alive? | Streak multiplier, hotter pay pops |
+| **Day** | ~10 min | Which contract, which routes, buy or save? | Stars, contract cash, a card |
+| **Season** | 12 days | Can I make rent through Holiday Peak? | Score, reputation, unlocks |
+| **Profile** | forever | What do I unlock or beat next? | Charters, heat, HQ upgrades, goals |
+
+### Design rules we followed
+
+1. **Spending vs. saving is the core management tension.** Rent is paid from the till,
+   so every van, vendor and reroll is a bet. Interest on savings makes holding cash a
+   real choice instead of a wasted one.
+2. **Telegraph every threat.** Twists are rolled at the start of each week and shown in
+   every briefing until they hit. Losing should feel like a planning mistake, never a
+   coin flip.
+3. **Forgive once.** The first missed rent is a final notice with a late fee, not
+   instant death. New players learn the rule; heat 4 removes the safety net for experts.
+4. **A run must end.** Win at day 12 or get evicted. Endings create the summary screen,
+   the summary creates the "one more run" moment.
+5. **Make the micro loop juicy.** The streak is the slot-machine hum underneath the
+   spreadsheet: every on-time drop pays a bit more, tier names pop, the pay numbers grow
+   and change color. Breaking it hurts, and cards exist to protect it.
+6. **Always show the next carrot.** The title strip, the run summary and head office
+   all name the next affordable unlock and the next three goals.
+7. **Variety comes from starting conditions, not just content volume.** Charters change
+   the opening (fleet, cash, share, rent) and heat changes the rules, so the same town
+   plays differently.
+8. **Daily run for the habit.** One seeded season per day, no upgrades, a personal best
+   and a days-in-a-row streak. Short-session players get a reason to open the game
+   every day.
+
+### Tuning knobs (all in `scripts/sim/season.gd` and `profile.gd`)
+
+- `LEASES`: the rent curve. If most first runs die on day 6, lower week 2.
+- `STREAK_STEP` / `STREAK_CAP`: how loud the micro loop is.
+- `HEAT`: the difficulty ladder.
+- `Profile.UPGRADES` / `GOALS` / charter `unlock` costs: the pace of meta progression.
+  Target: first unlock after the first or second run, something new every 1–2 runs after.
+
+### Next ideas
+
+- Run modifiers chosen at the start ("Sponsor deals": +risk, +reward).
+- A short **boss contract** on peak day with its own reward card.
+- Leaderboard upload for the daily seed (the sim is already deterministic).
+- Driver legacy: a driver who survives a season can be "retained" into the next run.

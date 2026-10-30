@@ -6,6 +6,8 @@ extends RefCounted
 ##
 ## A day has phases: MORNING (briefing, clock stopped) -> DAY (07:00-21:00) ->
 ## EVENING (report + card draft, clock stopped) -> NIGHT (fast-forwarded) -> MORNING.
+## In a season run (see Season) the lease is due every third evening, and the run
+## ends in phase OVER when the player is evicted or survives day 12.
 
 signal parcel_delivered(parcel: Parcel, van: Van, pay: float)
 signal van_added(van: Van)
@@ -13,7 +15,7 @@ signal van_removed(van: Van)
 signal notice(text: String, kind: String)
 signal event(name: String, data: Dictionary)
 
-enum Phase { MORNING, DAY, EVENING, NIGHT }
+enum Phase { MORNING, DAY, EVENING, NIGHT, OVER }
 const WEATHER := ["Clear", "Rain", "Fog"]
 
 const TICK_RATE := 10
@@ -65,9 +67,20 @@ var draft: Array = []            # card ids on offer this evening
 var draft_rerolls := 0
 var report := {}                 # evening summary for the UI
 
+# Season run (empty run = classic endless mode)
+var run := {}                    # see Season: charter, heat, daily, hq
+var twist := ""                  # today's twist id ("" = none)
+var week_twist := ""             # the twist waiting on this week's due day
+var streak := 0                  # on-time deliveries in a row (player)
+var lease_strikes := 0
+var lease_debt := 0.0
+var run_stats := {"best_streak": 0, "leases_paid": 0, "max_fleet": 0, "best_day": 0, "three_star_days": 0}
+var run_result := {}
 
-func setup(p_seed: int, start_fleet: Array) -> void:
+
+func setup(p_seed: int, start_fleet: Array, p_run := {}) -> void:
 	seed_value = p_seed
+	run = p_run.duplicate(true)
 	rng.seed = p_seed
 	city.build(rng)
 	_make_company(PLAYER, "Last Mile Co.", "LMC", "Maple St. Depot", Palette.PLAYER, false)
@@ -86,12 +99,21 @@ func setup(p_seed: int, start_fleet: Array) -> void:
 	r.dispatch_threshold = 0.5
 	r.max_wait = 12.0
 	r.auto_service = 0.35
-	for i in 3:
+	for i in (5 if heat() >= 2 else 3):
 		var v := _add_van(r, &"van")
 		v.condition = rng.randf_range(0.75, 0.9)
 	for d in 4:
 		score.append([0.7, 0.8])
 	rival_ai = RivalAI.new(self, RIVAL)
+	if season_on():
+		p.money = charter()["cash"] + 100.0 * hq("till")
+		p.money_start_of_day = p.money
+		for vi in charter().get("vendors", []):
+			p.vendors_unlocked[vi] = true
+		for d in 4:
+			share[d] = clampf(share[d] + charter().get("share", 0.0), 0.1, 0.9)
+		if not p.vans.is_empty():
+			_apply_run_start(p)
 	_refill_job_board(minutes())
 	_begin_morning(true)
 
@@ -151,6 +173,10 @@ func hour_curve(h: float) -> float:
 
 func demand_per_hour() -> float:
 	var w := 1.15 if weather == 1 else 1.0
+	if twist == "viral":
+		w *= 1.6
+	if is_peak_day():
+		w *= Season.PEAK_DEMAND
 	return (14.0 + 6.0 * (day() - 1)) * hour_curve(minute_of_day() / 60.0) * w
 
 
@@ -161,6 +187,8 @@ func is_rush_hour() -> bool:
 
 func traffic_mult() -> float:
 	var m := 0.78 if is_rush_hour() else 1.0
+	if twist == "gridlock":
+		m *= 0.75
 	if weather == 1:
 		m *= 0.88
 	elif weather == 2:
@@ -216,12 +244,15 @@ func _process_commands() -> void:
 						notice.emit("Zoomer Express added %s to their fleet" % v.code, "rival")
 					else:
 						notice.emit("%s joins the team, driving %s" % [v.driver.name, v.code], "good")
+						run_stats["max_fleet"] = maxi(run_stats["max_fleet"], c.vans.size())
 					event.emit("van_bought", {"van": v})
 			"starter_fleet":
 				if c.vans.is_empty():
 					for t in cmd["vehicles"]:
 						var v := _add_van(c, t)
 						v.condition = rng.randf_range(0.68, 0.78)
+					if season_on():
+						_apply_run_start(c)
 					_begin_morning(true)
 					event.emit("fleet_ready", {})
 			"sell_van":
@@ -330,7 +361,7 @@ func _process_commands() -> void:
 					_begin_night()
 			"reroll_draft":
 				if phase == Phase.EVENING and c.id == PLAYER:
-					var cost := REROLL_COST * (draft_rerolls + 1)
+					var cost := reroll_cost()
 					if c.money >= cost:
 						c.money -= cost
 						draft_rerolls += 1
@@ -362,6 +393,183 @@ func _add_van(c: Company, t: StringName) -> Van:
 	c.vans.append(v)
 	van_added.emit(v)
 	return v
+
+
+# ---------------------------------------------------------------- season run
+
+func season_on() -> bool:
+	return not run.is_empty()
+
+
+func heat() -> int:
+	return int(run.get("heat", 0))
+
+
+func hq(id: String) -> int:
+	return int(run.get("hq", {}).get(id, 0))
+
+
+func charter() -> Dictionary:
+	return Season.charter(run.get("charter", "courier"))
+
+
+func is_peak_day() -> bool:
+	return season_on() and day() == Season.DAYS
+
+
+func reroll_cost() -> float:
+	if hq("dice") > 0 and draft_rerolls == 0:
+		return 0.0
+	return REROLL_COST * (draft_rerolls + 1 - mini(hq("dice"), 1))
+
+
+## Lease due at the end of this week, including any carried debt.
+func lease_amount() -> float:
+	if not season_on():
+		return 0.0
+	var m: float = charter().get("lease", 1.0) * (1.0 - 0.08 * hq("landlord")) * companies[PLAYER].perk("lease")
+	if heat() >= 1:
+		m *= 1.15
+	if heat() >= 8:
+		m *= 1.25
+	return roundf(Season.LEASES[Season.week_of(day())] * m) + roundf(lease_debt)
+
+
+## Missed leases you can survive. Heat 4 takes away the free one.
+func strikes_allowed() -> int:
+	return (0 if heat() >= 4 else 1) + hq("grace")
+
+
+func promise_mult() -> float:
+	var m: float = charter().get("promise", 1.0) if season_on() else 1.0
+	if heat() >= 6:
+		m *= 0.85
+	if twist == "tight":
+		m *= 0.7
+	return m
+
+
+func streak_cap() -> int:
+	return Season.STREAK_CAP + int(companies[PLAYER].perk_add("streak_cap"))
+
+
+func streak_mult() -> float:
+	var step := Season.STREAK_STEP + 0.01 * hq("hype")
+	return 1.0 + step * mini(streak, streak_cap())
+
+
+## One-time bonuses for the chosen charter and HQ upgrades, once the fleet exists.
+func _apply_run_start(p: Company) -> void:
+	if run.get("applied", false):
+		return
+	run["applied"] = true
+	var ch := charter()
+	for v in p.vans:
+		for m in ch.get("mods_each", []):
+			v.mods.append(m)
+		if ch.has("mood"):
+			v.driver.mood = ch["mood"]
+	for m in ch.get("mods_last", []):
+		p.vans[p.vans.size() - 1].mods.append(m)
+	for v in p.vans:
+		v.refresh_stats()
+	if hq("scout") > 0:
+		var picks := Cards.roll(rng, 1, 0, p.perks, true, 1)
+		if not picks.is_empty():
+			var id: StringName = picks[0]
+			var target := p.vans[0]
+			for v in p.vans:
+				if v.mods.size() < target.mods.size():
+					target = v
+			_apply_card(p, id, target.id)
+	run_stats["max_fleet"] = p.vans.size()
+
+
+## Picks today's twist. A week's twist is rolled on its first morning, so the
+## briefing can warn about it two days ahead.
+func _roll_twists() -> void:
+	twist = ""
+	if not season_on():
+		week_twist = ""
+		return
+	var d := day()
+	if (d - 1) % Season.WEEK_DAYS == 0:
+		week_twist = Season.TWIST_ORDER[rng.randi_range(0, Season.TWIST_ORDER.size() - 1)]
+	if d % Season.WEEK_DAYS == 0:
+		twist = week_twist
+	elif heat() >= 5 and d % Season.WEEK_DAYS == 2:
+		var pool: Array = Season.TWIST_ORDER.filter(func(t): return t != week_twist)
+		twist = pool[rng.randi_range(0, pool.size() - 1)]
+
+
+## Counts an on-time drop. Returns the tip earned (Tip Jar).
+func _bump_streak(c: Company) -> float:
+	streak += 1
+	run_stats["best_streak"] = maxi(run_stats["best_streak"], streak)
+	c.counters["streak_peak"] = maxi(c.counters.get("streak_peak", 0), streak)
+	if streak in Season.STREAK_TIERS and streak <= streak_cap():
+		notice.emit("%s! %d on time in a row: deliveries pay x%.2f" % [Season.STREAK_NAMES[streak], streak, streak_mult()], "streak")
+		event.emit("streak_tier", {"streak": streak})
+	if c.has_perk_fx("tip_jar"):
+		return float(streak / 5)
+	return 0.0
+
+
+func _break_streak(c: Company, why: String) -> void:
+	if streak <= 0:
+		return
+	var was := streak
+	if why == "late" and c.has_perk_fx("second_wind"):
+		streak = streak / 2
+	else:
+		streak = 0
+	var floor_at := int(c.perk_add("streak_floor"))
+	if floor_at > 0 and was >= floor_at:
+		streak = maxi(streak, floor_at)
+	if was >= 5 and streak < was:
+		notice.emit("Streak %s at %d (%s)" % ["cut" if streak > 0 else "broken", was, "late parcel" if why == "late" else "nobody home"], "bad")
+		event.emit("streak_broken", {"was": was, "now": streak})
+
+
+## Bills the lease on a due evening. Returns the report entry.
+func _settle_lease(p: Company) -> Dictionary:
+	var amount := lease_amount()
+	var out := {"due": true, "amount": amount, "paid": false, "strike": false, "evicted": false, "won": false}
+	if p.money >= amount:
+		p.money -= amount
+		lease_debt = 0.0
+		run_stats["leases_paid"] += 1
+		out["paid"] = true
+		out["won"] = day() >= Season.DAYS
+	elif day() < Season.DAYS and lease_strikes < strikes_allowed():
+		# Final notice: pay what you can, the rest (plus a late fee) rolls into next week.
+		var part := maxf(p.money, 0.0)
+		p.money -= part
+		lease_strikes += 1
+		lease_debt = (amount - part) * Season.LATE_FEE
+		out["strike"] = true
+		out["paid_part"] = part
+		out["debt"] = lease_debt
+	else:
+		out["evicted"] = true
+	return out
+
+
+func _end_run(won: bool) -> void:
+	phase = Phase.OVER
+	draft = []
+	var p := companies[PLAYER]
+	run_result = run_stats.duplicate()
+	run_result.merge({
+		"id": run.get("id", 0), "charter": run.get("charter", "courier"), "heat": heat(),
+		"daily": run.get("daily", false), "daily_number": run.get("daily_number", -1),
+		"won": won, "day": day(), "revenue": p.lifetime_revenue, "stars": p.stars_total,
+		"delivered": p.delivered_total, "ontime_rate": p.ontime_rate_total(), "fleet": p.vans.size(),
+		"level_name": p.level_info()["name"], "ended_at": int(Time.get_unix_time_from_system()),
+	})
+	run_result["score"] = Season.score(run_result)
+	run_result["rep"] = Season.rep_earned(run_result)
+	event.emit("run_over", run_result)
 
 
 # ---------------------------------------------------------------- day rhythm
@@ -400,6 +608,7 @@ func _begin_morning(first := false) -> void:
 		if v.carries_heavy():
 			has_heavy = true
 	contract_offers = Contracts.roll(rng, day(), maxi(1, p.vans.size()), has_heavy)
+	_roll_twists()
 	event.emit("morning", {})
 
 
@@ -419,30 +628,48 @@ func _begin_evening() -> void:
 	if done:
 		stars += 1
 	p.stars_total += stars
+	if stars == 3:
+		run_stats["three_star_days"] += 1
+	run_stats["best_day"] = maxi(run_stats["best_day"], total)
 	var tier: Dictionary = Contracts.TIERS[p.contract.get("tier", 0)] if done else {"draft_count": 3, "boost": 0, "min_rarity": 0}
 	var reward: float = p.contract.get("reward", 0.0) if done else 0.0
 	if done:
 		p.money += reward
+	# Savings interest: $5 for every $100 in the till, capped. Saving vs. spending.
+	var interest := 0.0
+	if season_on() and p.money > 0.0:
+		interest = minf(floorf(p.money / 100.0) * 5.0, 25.0 + p.perk_add("interest_cap"))
+		p.money += interest
+	var lease := {}
+	if season_on() and day() % Season.WEEK_DAYS == 0:
+		lease = _settle_lease(p)
+	var count_mod := hq("shark") - (1 if heat() >= 3 else 0)
 	report = {
 		"day": day(), "delivered": total, "ontime": ontime, "late": late, "rate": rate,
 		"revenue": p.revenue_today, "net": p.money - p.money_start_of_day,
 		"contract": p.contract.duplicate(), "contract_done": done, "reward": reward, "stars": stars,
-		"draft_count": tier["draft_count"] + (1 if stars == 3 else 0), "boost": tier["boost"], "min_rarity": tier["min_rarity"],
+		"draft_count": maxi(2, tier["draft_count"] + (1 if stars == 3 else 0) + count_mod), "boost": tier["boost"], "min_rarity": tier["min_rarity"],
 		"failed_attempts": p.counters.get("not_home", 0), "breakdowns": p.counters.get("breakdowns", 0),
+		"interest": interest, "lease": lease, "twist": twist, "streak": streak,
 	}
 	draft_rerolls = 0
-	_roll_draft(p, report["draft_count"], report["boost"], report["min_rarity"])
 	city.set_closures([])
+	if lease.get("evicted", false) or lease.get("won", false):
+		report["run_end"] = "won" if lease.get("won", false) else "evicted"
+		_end_run(lease.get("won", false))
+		return
+	_roll_draft(p, report["draft_count"], report["boost"], report["min_rarity"])
 	event.emit("evening", report)
 
 
 func _roll_draft(p: Company, n: int, boost: int, min_rarity: int) -> void:
-	draft = Cards.roll(rng, n, boost, p.perks, not p.vans.is_empty(), min_rarity)
+	draft = Cards.roll(rng, n, boost, p.perks, not p.vans.is_empty(), min_rarity, season_on())
 
 
 func _begin_night() -> void:
 	phase = Phase.NIGHT
 	draft = []
+	twist = ""
 	event.emit("night", {})
 
 
@@ -543,13 +770,18 @@ func _assign_window(c: Company, p: Parcel, now: float) -> void:
 func _spawn_walk_in(now: float) -> void:
 	var hid := rng.randi_range(0, city.houses.size() - 1)
 	var d: int = city.houses[hid]["district"]
-	var cid := PLAYER if rng.randf() < share[d] else RIVAL
+	var cid := PLAYER if rng.randf() < share[d] * (0.6 if twist == "blitz" else 1.0) else RIVAL
 	var c := companies[cid]
 	var p := _new_parcel(c, hid, now)
-	p.kind = Parcel.Kind.EXPRESS if rng.randf() < 0.2 else Parcel.Kind.STANDARD
+	p.kind = Parcel.Kind.EXPRESS if rng.randf() < (0.35 if twist == "viral" else 0.2) else Parcel.Kind.STANDARD
 	p.weight = snappedf(rng.randf_range(0.5, 8.0), 0.1)
 	p.pay_amount = 18.0 if p.kind == Parcel.Kind.EXPRESS else 11.0
-	p.deadline = now + (75.0 if p.kind == Parcel.Kind.EXPRESS else 180.0)
+	var promise := 75.0 if p.kind == Parcel.Kind.EXPRESS else 180.0
+	if cid == PLAYER:
+		promise *= promise_mult()
+		if season_on():
+			p.pay_amount *= charter().get("walkin_pay", 1.0)
+	p.deadline = now + promise
 	_assign_window(c, p, now)
 
 
@@ -657,7 +889,7 @@ func _job_arrived(c: Company, j: Job, now: float) -> void:
 		p.weight = j.weights[k]
 		p.kind = Parcel.Kind.EXPRESS if j.express else Parcel.Kind.STANDARD
 		p.pay_amount = per_stop
-		p.deadline = now + j.promise
+		p.deadline = now + j.promise * promise_mult()
 		if not j.rush:
 			_assign_window(c, p, now)
 		else:
@@ -716,6 +948,8 @@ func _has_loadable(c: Company, v: Van) -> bool:
 func _mood(v: Van, delta: float) -> void:
 	if delta < 0.0 and v.fx_has("mood_lock"):
 		return
+	if delta < 0.0 and twist == "heatwave" and v.company == PLAYER:
+		delta *= 2.0
 	v.driver.change_mood(delta)
 
 
@@ -888,6 +1122,8 @@ func _not_home(c: Company, v: Van, p: Parcel) -> void:
 	_mood(v, -1.0)
 	if c.id == PLAYER:
 		c.count("not_home")
+		if not c.has_perk_fx("streak_guard"):
+			_break_streak(c, "not_home")
 	event.emit("not_home", {"parcel": p, "van": v})
 
 
@@ -899,6 +1135,13 @@ func _deliver(c: Company, v: Van, p: Parcel, now: float) -> void:
 	if p.kind == Parcel.Kind.EXPRESS:
 		base *= v.fx("express_pay")
 	var pay := base * (0.3 if p.late else 1.0)
+	if c.id == PLAYER:
+		if p.late:
+			_break_streak(c, "late")
+			if twist == "inspector":
+				pay = -10.0
+		else:
+			pay = pay * streak_mult() + _bump_streak(c)
 	c.money += pay
 	c.revenue_today += pay
 	c.lifetime_revenue += pay
@@ -990,6 +1233,11 @@ func _wear_and_maybe_break(c: Company, v: Van, now: float) -> bool:
 	var worn := 1.0 - v.condition
 	var p := BREAK_BASE * worn * worn * (0.4 if v.driver.has(&"gearhead") else 1.0) * v.fx("break") \
 		* (1.5 if weather == 1 else 1.0)
+	if c.id == PLAYER:
+		if twist == "heatwave":
+			p *= 1.6
+		if heat() >= 7:
+			p *= 1.5
 	if rng.randf() < p:
 		_break_down(c, v, now)
 		return true

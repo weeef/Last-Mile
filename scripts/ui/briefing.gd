@@ -14,9 +14,16 @@ func setup(p_sim: Sim, p_main: Node) -> void:
 	var top := UIKit.hbox(12)
 	var tv := UIKit.vbox(-6)
 	tv.add_child(UIKit.label("07:00 · MAPLE ST. DEPOT", 13, Palette.TEXT_SOFT, "head"))
-	tv.add_child(UIKit.head("Morning briefing · day %d" % sim.day(), 34, Palette.TEXT))
+	tv.add_child(UIKit.head("Morning briefing · day %d%s" % [sim.day(), " of %d" % Season.DAYS if sim.season_on() else ""], 34, Palette.TEXT))
 	top.add_child(tv)
+	if sim.streak > 0:
+		top.add_child(UIKit.spacer())
+		var sk := UIKit.stamp("Streak %d · x%.2f pay" % [sim.streak, sim.streak_mult()], Palette.ORANGE, 15)
+		sk.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		top.add_child(sk)
 	body.add_child(top)
+	if sim.season_on():
+		body.add_child(_season_strip())
 
 	# Conditions
 	var cond := UIKit.hbox(10)
@@ -42,6 +49,57 @@ func setup(p_sim: Sim, p_main: Node) -> void:
 	skip.size_flags_horizontal = Control.SIZE_SHRINK_END
 	skip.pressed.connect(func(): main.submit_player({"type": "pick_contract", "index": -1}))
 	body.add_child(skip)
+
+
+## Lease countdown, this week's twist and the peak warning.
+func _season_strip() -> Control:
+	var d := sim.day()
+	var due := Season.due_day(d)
+	var left := due - d
+	var p := PanelContainer.new()
+	var st := UIKit.paper_style(Palette.PAPER_2, 12, 4)
+	st.border_width_left = 8
+	st.border_color = Palette.RED if left == 0 else Palette.INK
+	p.add_theme_stylebox_override("panel", st)
+	var h := UIKit.hbox(18)
+	p.add_child(h)
+	var lv := UIKit.vbox(-2)
+	lv.add_child(UIKit.head("Week %d of %d · lease" % [Season.week_of(d) + 1, Season.LEASES.size()], 12, Palette.TEXT_SOFT))
+	var when := "DUE TONIGHT" if left == 0 else ("due tomorrow" if left == 1 else "due day %d" % due)
+	lv.add_child(UIKit.head("%s %s" % [UIKit.money(sim.lease_amount()), when], 22, Palette.RED if left == 0 else Palette.TEXT))
+	var have := sim.player().money
+	var short := sim.lease_amount() - have
+	var note := "You have it covered (%s in the till)." % UIKit.money(have) if short <= 0.0 else "%s short. Make it before 21:00 on day %d." % [UIKit.money(short), due]
+	if sim.lease_debt > 0.0:
+		note += " Includes %s carried debt." % UIKit.money(sim.lease_debt)
+	lv.add_child(UIKit.label(note, 12, Palette.GREEN if short <= 0.0 else Palette.TEXT_SOFT))
+	h.add_child(lv)
+	var sep := ColorRect.new()
+	sep.color = Palette.RULE
+	sep.custom_minimum_size = Vector2(2, 0)
+	h.add_child(sep)
+	var tw := UIKit.vbox(-2)
+	tw.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var tid := sim.twist if sim.twist != "" else sim.week_twist
+	var today := sim.twist != ""
+	var title := "Twist today" if today else "Twist on day %d" % due
+	if sim.is_peak_day():
+		title = "HOLIDAY PEAK · demand x%.0f" % Season.PEAK_DEMAND
+	tw.add_child(UIKit.head(title, 12, Palette.RED if today or sim.is_peak_day() else Palette.TEXT_SOFT))
+	if tid != "":
+		tw.add_child(UIKit.head(Season.twist_name(tid), 22, Palette.ORANGE if today else Palette.TEXT))
+		var td := UIKit.label(Season.TWISTS[tid]["desc"], 12, Palette.TEXT_SOFT)
+		td.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		td.custom_minimum_size.x = 340
+		tw.add_child(td)
+	h.add_child(tw)
+	var sv := UIKit.vbox(-2)
+	sv.add_child(UIKit.head("Final notices", 12, Palette.TEXT_SOFT))
+	var left_strikes := sim.strikes_allowed() - sim.lease_strikes
+	sv.add_child(UIKit.head("%d left" % left_strikes, 22, Palette.RED if left_strikes <= 0 else Palette.TEXT))
+	sv.add_child(UIKit.label("heat %d" % sim.heat(), 12, Palette.TEXT_SOFT))
+	h.add_child(sv)
+	return p
 
 
 func _weather_note() -> String:

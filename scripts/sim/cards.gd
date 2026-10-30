@@ -8,6 +8,8 @@ extends RefCounted
 ##   heavy (flag), mood_lock (flag), gps (speed on 5+ stop routes)
 ##   company: fuel, tow (flag), sort, shop_cost, shop_time, job_pay, front_of_line (flag),
 ##   promise_add (+minutes), mood_now (+instant), share_now (+instant)
+##   streaks + season: streak_guard (flag), second_wind (flag), streak_cap (+add), streak_floor (+add),
+##   tip_jar (flag), lease (mult), interest_cap (+add)
 
 enum Rarity { COMMON, UNCOMMON, RARE, ULTRA }
 const RARITY_NAMES := ["Common", "Uncommon", "Rare", "Ultra rare"]
@@ -41,6 +43,14 @@ const DATA := {
 	&"vendor_rep": {"name": "Vendor Rep", "rarity": 2, "kind": "company", "desc": "New jobs pay +15%.", "fx": {"job_pay": 1.15}},
 	&"front_of_line": {"name": "Mechanic's Friend", "rarity": 2, "kind": "company", "desc": "Your vehicles skip to the front of the garage line.", "fx": {"front_of_line": 1}},
 	&"express_lane": {"name": "Express Lane", "rarity": 3, "kind": "company", "desc": "Every delivery promise gets +30 min.", "fx": {"promise_add": 30.0}},
+	# ---- streak and season perks
+	&"tip_jar": {"name": "Tip Jar", "rarity": 0, "kind": "company", "desc": "On-time drops earn +$1 tip for every 5 in your streak.", "fx": {"tip_jar": 1}},
+	&"piggy_bank": {"name": "Piggy Bank", "rarity": 0, "kind": "company", "desc": "Nightly savings interest can go $30 higher.", "fx": {"interest_cap": 30.0}, "season": true},
+	&"doorbell_cam": {"name": "Doorbell Cam", "rarity": 1, "kind": "company", "desc": "\"Nobody home\" no longer breaks your streak.", "fx": {"streak_guard": 1}},
+	&"second_wind": {"name": "Second Wind", "rarity": 1, "kind": "company", "desc": "A late parcel halves your streak instead of ending it.", "fx": {"second_wind": 1}},
+	&"haggler": {"name": "Lease Haggler", "rarity": 1, "kind": "company", "desc": "Every lease payment is 15% cheaper.", "fx": {"lease": 0.85}, "season": true},
+	&"hype_train": {"name": "Hype Train", "rarity": 2, "kind": "company", "desc": "Streak cap 25 to 40: up to x2.6 pay.", "fx": {"streak_cap": 15.0}},
+	&"golden_hour": {"name": "Golden Hour", "rarity": 3, "kind": "company", "desc": "Once past 10, your streak never drops below 10.", "fx": {"streak_floor": 10.0}},
 }
 
 
@@ -53,7 +63,8 @@ static func is_vehicle(id: StringName) -> bool:
 
 
 ## Rolls `count` distinct cards. `boost` shifts odds toward rarer cards.
-static func roll(rng: RandomNumberGenerator, count: int, boost: int, owned_perks: Array, has_vehicles: bool, min_rarity := 0) -> Array:
+## Cards marked "season" (rent perks) only show up in season runs.
+static func roll(rng: RandomNumberGenerator, count: int, boost: int, owned_perks: Array, has_vehicles: bool, min_rarity := 0, season := true) -> Array:
 	var weights: Array = RARITY_WEIGHTS.duplicate()
 	for b in boost:
 		weights[0] *= 0.6
@@ -80,6 +91,8 @@ static func roll(rng: RandomNumberGenerator, count: int, boost: int, owned_perks
 			if c["rarity"] != rarity or out.has(id):
 				continue
 			if c["kind"] == "vehicle" and not has_vehicles:
+				continue
+			if c.get("season", false) and not season:
 				continue
 			if c["kind"] == "company" and not c.get("instant", false) and owned_perks.has(id):
 				continue

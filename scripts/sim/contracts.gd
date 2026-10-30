@@ -12,7 +12,7 @@ const TIERS := [
 
 ## Builds three offers (one per tier) scaled to the day and the fleet.
 static func roll(rng: RandomNumberGenerator, day: int, fleet: int, has_heavy: bool) -> Array:
-	var kinds := ["ontime", "express", "vendor", "revenue", "district", "clean"]
+	var kinds := ["ontime", "express", "vendor", "revenue", "district", "clean", "streak"]
 	if has_heavy:
 		kinds.append("heavy")
 	var out: Array = []
@@ -40,6 +40,8 @@ static func roll(rng: RandomNumberGenerator, day: int, fleet: int, has_heavy: bo
 				c["district"] = rng.randi_range(0, 3)
 			"clean":
 				c["target"] = int(round(6.0 * scale))
+			"streak":
+				c["target"] = int(round(6.0 * scale))
 			"heavy":
 				c["target"] = maxi(1, int(round(2.0 * scale)))
 		c["reward"] = roundf(TIERS[tier]["reward"] * (1.0 + 0.1 * (day - 1)))
@@ -62,6 +64,8 @@ static func describe(c: Dictionary) -> String:
 			return "Deliver %d parcels in %s" % [t, City.DISTRICT_NAMES[c["district"]]]
 		"clean":
 			return "Deliver %d parcels with zero late ones" % t
+		"streak":
+			return "Hit a streak of %d on-time drops" % t
 		"heavy":
 			return "Deliver %d heavy items" % t
 	return "?"
@@ -84,6 +88,8 @@ static func progress(c: Dictionary, counters: Dictionary) -> float:
 			return counters.get("ontime", 0) if counters.get("late", 0) == 0 else 0
 		"heavy":
 			return counters.get("heavy", 0)
+		"streak":
+			return counters.get("streak_peak", 0)
 	return 0
 
 

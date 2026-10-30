@@ -68,6 +68,8 @@ func _build() -> void:
 		else:
 			ch.add_child(UIKit.stamp("Missed", Palette.RED, 14))
 	body.add_child(crow)
+	if sim.season_on():
+		body.add_child(_season_row(r))
 	body.add_child(UIKit.rule())
 	if _picking == &"":
 		_build_draft()
@@ -99,8 +101,8 @@ func _build_draft() -> void:
 		row.add_child(cv)
 	body.add_child(row)
 	var actions := UIKit.hbox(8)
-	var cost := Sim.REROLL_COST * (sim.draft_rerolls + 1)
-	var reroll := UIKit.button("Reroll  %s" % UIKit.money(cost), "paper", 15)
+	var cost := sim.reroll_cost()
+	var reroll := UIKit.button("Reroll  %s" % (UIKit.money(cost) if cost > 0.0 else "free"), "paper", 15)
 	reroll.disabled = sim.player().money < cost
 	reroll.pressed.connect(func(): main.submit_player({"type": "reroll_draft"}))
 	actions.add_child(reroll)
@@ -109,6 +111,37 @@ func _build_draft() -> void:
 	skip.pressed.connect(func(): main.submit_player({"type": "skip_card"}))
 	actions.add_child(skip)
 	body.add_child(actions)
+
+
+## Interest, streak and (on due evenings) the lease bill.
+func _season_row(r: Dictionary) -> Control:
+	var lease: Dictionary = r.get("lease", {})
+	var p := PanelContainer.new()
+	var col := Palette.PAPER_2
+	if lease.get("strike", false):
+		col = Color(Palette.RED, 0.18)
+	elif lease.get("paid", false):
+		col = Color(Palette.GREEN, 0.15)
+	p.add_theme_stylebox_override("panel", UIKit.flat(col, 2, 12, 8))
+	var h := UIKit.hbox(12)
+	p.add_child(h)
+	if lease.get("paid", false):
+		h.add_child(UIKit.head("Lease paid", 15, Palette.GREEN))
+		h.add_child(UIKit.mono("-" + UIKit.money(lease["amount"]), 15, Palette.TEXT, true))
+		h.add_child(UIKit.stamp("Week %d done" % sim.run_stats["leases_paid"], Palette.GREEN, 13))
+	elif lease.get("strike", false):
+		h.add_child(UIKit.head("Final notice!", 15, Palette.RED))
+		h.add_child(UIKit.label("Short on the lease. %s rolls into next week with a late fee." % UIKit.money(lease.get("debt", 0.0)), 13, Palette.TEXT, "bold"))
+	else:
+		var left := Season.due_day(sim.day()) - sim.day()
+		h.add_child(UIKit.head("Next lease", 15, Palette.TEXT_SOFT))
+		h.add_child(UIKit.mono("%s in %d day%s" % [UIKit.money(sim.lease_amount()), left, "" if left == 1 else "s"], 15, Palette.TEXT, true))
+	h.add_child(UIKit.spacer())
+	if r.get("interest", 0.0) > 0.0:
+		h.add_child(UIKit.mono("interest +%s" % UIKit.money(r["interest"]), 13, Palette.GREEN, true))
+	if r.get("streak", 0) > 0:
+		h.add_child(UIKit.stamp("streak %d" % r["streak"], Palette.ORANGE, 13))
+	return p
 
 
 func _on_card(id: StringName) -> void:

@@ -1184,12 +1184,26 @@ func _on_delivered(p: Parcel, v: Van, pay: float) -> void:
 		return
 	var l := Label3D.new()
 	l.font = _font_mono
-	l.text = ("+$%d" % int(round(pay))) if not p.late else ("LATE +$%d" % int(round(pay)))
-	l.font_size = 64
+	var streak := sim.streak if not p.late else 0
+	if p.late:
+		l.text = ("LATE +$%d" % int(round(pay))) if pay >= 0.0 else ("FINED -$%d" % int(round(-pay)))
+	elif streak >= 5:
+		l.text = "+$%d  x%d" % [int(round(pay)), streak]
+	else:
+		l.text = "+$%d" % int(round(pay))
+	# Bigger and hotter as the streak climbs.
+	l.font_size = 64 + mini(streak, 25) * 2
 	l.pixel_size = 0.01
 	l.outline_size = 16
 	l.outline_modulate = Palette.INK
-	l.modulate = Color("b9d98f") if not p.late else Color("f09a86")
+	if p.late:
+		l.modulate = Color("f09a86")
+	elif streak >= 20:
+		l.modulate = Color("ff8a5c")
+	elif streak >= 10:
+		l.modulate = Color("ffc35c")
+	else:
+		l.modulate = Color("b9d98f")
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	l.no_depth_test = true
 	l.render_priority = 10

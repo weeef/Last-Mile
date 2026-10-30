@@ -1,7 +1,7 @@
 extends SceneTree
 ## Renders the game and saves a PNG.
 ## Usage: -s tools/screenshot.gd -- out.png <mode> <ticks>
-##   mode: title | picker | settings | briefing | play | route | report | rain | wide
+##   mode: title | picker | hq | settings | briefing | play | route | report | rain | wide
 var main: Node
 var frame := 0
 var out := "shot.png"
@@ -21,11 +21,13 @@ func _process(_d: float) -> bool:
 	if frame == 2:
 		match mode:
 			"picker": main._on_new_game(1)
+			"hq": main._show_hq(main._show_title)
 			"settings": main.open_settings()
-	if frame == 3 and mode not in ["title", "picker", "settings"]:
-		main._on_new_game(1)
+	if frame == 3 and mode not in ["title", "picker", "hq", "settings"]:
+		main.slot = 1
+		main._begin_run(main.profile.make_run("courier", 0), 20261029)
 		main._on_fleet_chosen([&"van", &"box"], false)
-	if frame == 5 and mode not in ["title", "picker", "settings", "briefing"]:
+	if frame == 5 and mode not in ["title", "picker", "hq", "settings", "briefing"]:
 		var sim: Sim = main.sim
 		if mode == "rain":
 			sim.weather = 1

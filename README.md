@@ -1,4 +1,4 @@
-# Last Mile — Prototype v0.4
+# Last Mile — Prototype v0.5
 
 A cozy-but-moody 3D logistics game about growing a tiny delivery outfit.
 Open this folder in **Godot 4.7** and press **F5**.
@@ -6,6 +6,56 @@ Open this folder in **Godot 4.7** and press **F5**.
 ![The town at dusk](docs/screenshots/town-dusk.png)
 
 Design notes and the long-term plan live in [docs/DESIGN.md](docs/DESIGN.md).
+
+## The season (the roguelike run)
+
+Every new game is a **12-day season** on a fresh, randomly seeded town.
+
+- **Rent is due every third evening** (days 3, 6, 9, 12) and climbs each week:
+  $350, $800, $1,500, $2,400. It's billed at 21:00 from the cash in your till, so every
+  van you buy is a bet against making rent.
+- **Miss a payment** and you get a **final notice**: what you have is taken, the rest plus
+  a 20% late fee rolls into next week's rent. Miss again and you're **evicted**: run over.
+- **Twists.** Each week rolls a twist that hits on its due day, and the briefing warns you
+  two days ahead: Gridlock, Heatwave, Inspector Visit (late parcels are fined), Zoomer
+  Blitz, Viral Unboxing, Tight Promises.
+- **Day 12 is Holiday Peak**: double demand on top of the week's twist, with the
+  biggest rent of the season due that night. Pay it and you've won.
+- **Delivery streak.** Every on-time drop in a row adds +4% to the pay of every drop
+  (x2.0 at 25). A late parcel or "nobody home" breaks it. Streak tiers pop on screen and
+  the floating pay numbers grow hotter as it climbs.
+- **Savings interest.** Each evening you earn $5 per $100 in the till (up to $25), so
+  hoarding for rent pays a little, and spending has a cost.
+
+### Charters and heat
+
+Pick a **charter** (starting company) and a **heat** level before each season.
+
+| Charter | Start | Twist |
+|---|---|---|
+| Corner Courier | pick 2 vehicles, $250 | the classic |
+| Green Courier | Eco Tune on every vehicle, +5% walk-in share | only $150 |
+| Budget Freight | $700 | rent +25%, grumpy drivers |
+| Premium Express | Sprinter + Van, walk-ins pay +35% | promises 20% tighter |
+| Heavy Haulers | Box truck + liftgate Van, Oak & Iron unlocked | -5% walk-in share |
+
+**Heat 1–8** stacks extra pressure (pricier rent, a bigger rival, smaller drafts, no final
+notice, twists twice a week, tighter promises, more breakdowns). Winning at a heat
+unlocks the next one, and higher heat scores and earns more reputation.
+
+### Head office (between runs)
+
+Runs end, but your **reputation** stays. You earn it from stars, rent paid, your best
+streak, winning, and one-off **goals** ("Deliver 80 parcels in one day", "Win at heat 3",
+"Win with 3 different charters", …). Spend it at **Head office** on permanent upgrades
+(Bigger Till, Friendly Landlord, Lucky Dice, Talent Scout, Hype Crew, Second Chances,
+Card Shark) or to unlock charters. The title screen always tells you what the next
+unlock costs.
+
+### Daily run
+
+One seeded season per day: same town, same charter, heat 2, no HQ upgrades, so scores
+compare fairly. Your best score per day and your **days-in-a-row streak** are kept.
 
 ## How a day goes
 
@@ -26,7 +76,7 @@ Design notes and the long-term plan live in [docs/DESIGN.md](docs/DESIGN.md).
 5. **Evening (21:00).** Report card with up to 3 stars, then **draft one upgrade card**
    (reroll for cash, or skip for $40). The night shift runs on its own until morning.
 
-## Upgrade cards (the roguelike part)
+## Upgrade cards
 
 Four rarities: Common, Uncommon, Rare, **Ultra rare**.
 
@@ -37,6 +87,9 @@ Four rarities: Common, Uncommon, Rare, **Ultra rare**.
 - **Company perks** apply to everything: Bulk Fuel Deal, Tow Club, Night Sort Crew,
   Friendly Mechanic, Loyalty Cards, Vendor Rep, Mechanic's Friend, and the ultra rare
   **Express Lane** (+30 min on every promise).
+- **Streak and rent perks**: Tip Jar, Piggy Bank, Doorbell Cam (nobody-home won't break
+  your streak), Second Wind, Lease Haggler, Hype Train (streak cap 40), and the ultra rare
+  **Golden Hour** (streak never drops below 10).
 
 Lifetime earnings still raise your **business level** (bigger fleet cap, more vendors).
 Auto-dispatch is in RULES for when you'd rather not plan every trip.
@@ -56,8 +109,10 @@ Corner Pantry (start) · Sunrise Bakery · Oak & Iron (furniture, needs a box tr
 
 ## Title screen and saves
 
-The game opens on a title screen: **Continue** (most recent save), **New game**,
-**Load game**, **Settings**, **Quit**. There are **3 save slots**. The game autosaves
+The game opens on a title screen: **Continue** (most recent save), **New season**,
+**Daily run**, **Head office**, **Load game**, **Settings**, **Quit**. There are
+**3 save slots**; a slot is freed when its season ends. Reputation, upgrades, goals and
+records live in `user://profile.dat`, separate from the slots. The game autosaves
 at the start of every in-game day, when you leave to the menu, and when you quit.
 **Esc** in game opens the pause menu (resume, save, settings, main menu, quit).
 
@@ -103,15 +158,19 @@ scripts/
     save_game.gd        3-slot save/load of the full game state
     cards.gd            Upgrade cards, rarities and the draft roll
     contracts.gd        Daily contracts
+    season.gd           The run: rent schedule, twists, charters, heat, streak tuning, score
+    profile.gd          Persistent meta-progression: reputation, HQ upgrades, goals, daily streak
     parcel.gd, driver.gd, traits.gd, company.gd, rival_ai.gd
   view/                 3D town built from primitives (world_view.gd), camera, palette
-  ui/                   Dispatcher's-desk UI: hud, title, pause, settings, start screen, tutorial, widgets
+  ui/                   Dispatcher's-desk UI: hud, title, run setup, head office, run summary,
+                        pause, settings, start screen, tutorial, widgets
   settings/             Display + graphics settings and GPU-based preset detection
 fonts/                  Barlow, Barlow Condensed, IBM Plex Mono (SIL Open Font License)
 tools/
   autoplayer.gd         Scripted player used by the tests
   sim_test.gd           Headless 4-day run with a scripted player + determinism check
   save_test.gd          Save mid-game, load, run both forward and check they match
+  season_test.gd        Plays whole seasons at several heats, prints every rent bill, checks determinism
   screenshot.gd         Renders a PNG (modes: title, picker, settings, briefing, play, route, report, rain)
 ```
 
@@ -122,6 +181,7 @@ tools/
 3. Every player or AI action is a command sent with `sim.submit({...})`.
 
 Run the sim test: `godot --headless --path . -s tools/sim_test.gd`
+Run a full season: `godot --headless --path . -s tools/season_test.gd`
 
 ## Screenshots
 

@@ -34,6 +34,14 @@ var _contract_label: Label
 var _contract_bar: LMBar
 var _contract_val: Label
 var _conditions: Label
+var _season_panel: PanelContainer
+var _lease_label: Label
+var _lease_bar: LMBar
+var _lease_val: Label
+var _streak_box: PanelContainer
+var _streak_val: Label
+var _streak_sub: Label
+var _streak_shown := -1
 var _detail: PanelContainer
 var _d := {}
 var _detail_van_id := -1
@@ -214,7 +222,7 @@ func _build_stats() -> void:
 	var hint := UIKit.label("drag: pan   ·   right-drag / Q E: rotate   ·   wheel: zoom   ·   click a vehicle   ·   space: pause", 12, Color(Palette.PAPER, 0.75), "head_semi")
 	hint.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.5))
 	hint.add_theme_constant_override("shadow_offset_y", 1)
-	_place(hint, Control.PRESET_TOP_LEFT, Vector2(20, 236))
+	_place(hint, Control.PRESET_TOP_LEFT, Vector2(20, 262))
 	var cp := UIKit.paper(8)
 	var ch := UIKit.hbox(10)
 	cp.add_child(ch)
@@ -229,11 +237,82 @@ func _build_stats() -> void:
 	_contract_val = UIKit.mono("", 13, Palette.TEXT, true)
 	ch.add_child(_contract_val)
 	_place(cp, Control.PRESET_TOP_LEFT, Vector2(16, 176))
+	_build_season()
 	var cond := UIKit.label("", 13, Palette.PAPER, "head")
 	cond.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
 	cond.add_theme_constant_override("shadow_offset_y", 1)
 	_conditions = cond
 	add_child(cond)
+
+
+## Lease meter (cash vs. what's due) and the delivery streak badge.
+func _build_season() -> void:
+	var row := UIKit.hbox(8)
+	_season_panel = UIKit.paper(8)
+	var h := UIKit.hbox(10)
+	_season_panel.add_child(h)
+	_lease_label = UIKit.head("", 13, Palette.TEXT_SOFT)
+	h.add_child(_lease_label)
+	_lease_bar = LMBar.new()
+	_lease_bar.custom_minimum_size = Vector2(120, 10)
+	_lease_bar.bar_height = 10.0
+	_lease_bar.ticks = 4
+	_lease_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(_lease_bar)
+	_lease_val = UIKit.mono("", 13, Palette.TEXT, true)
+	h.add_child(_lease_val)
+	_season_panel.tooltip_text = "Rent is billed at 21:00 on the due day. Keep enough cash in the till."
+	row.add_child(_season_panel)
+	_streak_box = PanelContainer.new()
+	_streak_box.add_theme_stylebox_override("panel", UIKit.ink_style(8))
+	_streak_box.tooltip_text = "On-time deliveries in a row. Each one adds to the pay of every drop. A late parcel or nobody home breaks it."
+	var sh := UIKit.hbox(8)
+	_streak_box.add_child(sh)
+	_streak_val = UIKit.mono("", 18, Palette.PAPER, true)
+	sh.add_child(_streak_val)
+	_streak_sub = UIKit.head("", 12, Palette.TEXT_INV_SOFT)
+	_streak_sub.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sh.add_child(_streak_sub)
+	row.add_child(_streak_box)
+	_place(row, Control.PRESET_TOP_LEFT, Vector2(16, 216))
+
+
+func _refresh_season() -> void:
+	var p := sim.player()
+	_season_panel.visible = sim.season_on()
+	if sim.season_on():
+		var due := Season.due_day(sim.day())
+		var left := due - sim.day()
+		var amount := sim.lease_amount()
+		_lease_label.text = "LEASE %s" % ("TONIGHT" if left == 0 else "DAY %d" % due)
+		_lease_label.add_theme_color_override("font_color", Palette.RED if left == 0 else Palette.TEXT_SOFT)
+		_lease_bar.value = p.money / amount if amount > 0.0 else 1.0
+		_lease_bar.color = Palette.GREEN if p.money >= amount else (Palette.RED if left == 0 else Palette.AMBER)
+		_lease_val.text = "%s / %s" % [UIKit.money(p.money), UIKit.money(amount)]
+	var s := sim.streak
+	if s != _streak_shown:
+		var grew := s > _streak_shown and _streak_shown >= 0
+		_streak_shown = s
+		_streak_val.text = "x%.2f" % sim.streak_mult()
+		var tier := Season.streak_tier_name(s)
+		_streak_sub.text = ("%d IN A ROW%s" % [s, "  ·  " + tier.to_upper() if tier != "" else ""]) if s > 0 else "NO STREAK"
+		var col := Palette.TEXT_INV_SOFT
+		if s >= 20:
+			col = Palette.RED.lightened(0.25)
+		elif s >= 10:
+			col = Palette.ORANGE
+		elif s >= 5:
+			col = Palette.AMBER.lightened(0.2)
+		elif s > 0:
+			col = Palette.PAPER
+		_streak_val.add_theme_color_override("font_color", col)
+		var st := _streak_box.get_theme_stylebox("panel") as StyleBoxFlat
+		st.border_color = col if s >= 5 else Palette.INK
+		if grew and is_inside_tree():
+			_streak_box.pivot_offset = _streak_box.size * 0.5
+			var tw := create_tween()
+			tw.tween_property(_streak_box, "scale", Vector2(1.12, 1.12), 0.06)
+			tw.tween_property(_streak_box, "scale", Vector2.ONE, 0.14)
 
 
 # ============================================================= tools
@@ -1217,7 +1296,7 @@ func _build_overlay() -> void:
 
 
 func _toast(text: String, kind: String) -> void:
-	var colors := {"info": Palette.BLUE, "good": Palette.GREEN, "rival": Palette.PURPLE, "bad": Palette.RED, "rush": Palette.ORANGE}
+	var colors := {"info": Palette.BLUE, "good": Palette.GREEN, "rival": Palette.PURPLE, "bad": Palette.RED, "rush": Palette.ORANGE, "streak": Palette.AMBER}
 	var c: Color = colors.get(kind, Palette.BLUE)
 	var p := PanelContainer.new()
 	var st := UIKit.paper_style(Palette.PAPER, 10, 4)
@@ -1274,7 +1353,7 @@ func refresh(speed: int, cam: Camera3D, world: WorldView) -> void:
 	_fps.visible = show_fps
 	if show_fps:
 		_fps.text = "%d FPS" % Engine.get_frames_per_second()
-		_fps.position = Vector2(20, 256)
+		_fps.position = Vector2(20, 282)
 	_toasts.size = _toasts.get_combined_minimum_size()
 	_toasts.position = Vector2(floorf((vp.x - _toasts.size.x) * 0.5), 104)
 	var p := sim.player()
@@ -1288,8 +1367,13 @@ func refresh(speed: int, cam: Camera3D, world: WorldView) -> void:
 	else:
 		_level_bar.value = (p.lifetime_revenue - li["revenue"]) / (nxt["revenue"] - li["revenue"])
 		_level_sub.text = "%s / %s earned" % [UIKit.money(p.lifetime_revenue), UIKit.money(nxt["revenue"])]
-	_day.text = "DAY %d · %s%s" % [sim.day(), String(Sim.WEATHER[sim.weather]).to_upper(), "  ·  PAUSED" if speed == 0 else ""]
+	var day_txt := "DAY %d/%d" % [sim.day(), Season.DAYS] if sim.season_on() else "DAY %d" % sim.day()
+	_day.text = "%s · %s%s" % [day_txt, String(Sim.WEATHER[sim.weather]).to_upper(), "  ·  PAUSED" if speed == 0 else ""]
 	var conds: Array = []
+	if sim.is_peak_day():
+		conds.append("HOLIDAY PEAK: DOUBLE DEMAND")
+	if sim.twist != "":
+		conds.append(Season.twist_name(sim.twist).to_upper())
 	if sim.is_rush_hour():
 		conds.append("RUSH HOUR: traffic slow")
 	if not sim.city.closures.is_empty():
@@ -1343,6 +1427,7 @@ func refresh(speed: int, cam: Camera3D, world: WorldView) -> void:
 			ready += 1
 	_stats["fleet"]["sub"].text = "%d ready · %d in shop" % [ready, shop]
 
+	_refresh_season()
 	_refresh_detail()
 	_refresh_tracking()
 	_refresh_fleet()

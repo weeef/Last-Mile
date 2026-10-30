@@ -46,7 +46,7 @@ static func act(sim: Sim, i: int) -> void:
 static func run(sim: Sim, n: int, on_tick := Callable()) -> void:
 	var done := 0
 	var guard := 0
-	while done < n and guard < n * 3:
+	while done < n and guard < n * 3 and sim.phase != Sim.Phase.OVER:
 		guard += 1
 		act(sim, done)
 		if sim.clock_running():

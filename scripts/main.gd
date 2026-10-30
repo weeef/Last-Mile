@@ -1,6 +1,7 @@
 extends Node3D
 ## Entry point. Owns the clock and the current session (sim + world + HUD),
-## and moves between the title screen, a new game, loading, and the pause menu.
+## and moves between the title screen, run setup, a new season, loading, the
+## pause menu and the end-of-run summary. Also owns the persistent Profile.
 
 const SEED := 20261029
 
@@ -19,6 +20,7 @@ var _overlay: Control = null  # title / start screen / pause menu
 var _settings_menu: SettingsMenu = null
 var _tutorial: Tutorial = null
 var _want_tutorial := false
+var profile := Profile.load_or_new()
 
 
 func _ready() -> void:
@@ -75,17 +77,58 @@ func _show_title() -> void:
 	hud.visible = false
 	cam.home()
 	var t := TitleScreen.new()
+	t.profile = profile
 	t.new_game.connect(_on_new_game)
+	t.daily_game.connect(_on_daily_game)
+	t.hq_requested.connect(func(): _show_hq(_show_title))
 	t.load_game.connect(_on_load_game)
 	t.settings_requested.connect(open_settings)
 	t.quit_requested.connect(_quit)
 	_set_overlay(t)
 
 
+func _show_hq(back: Callable) -> void:
+	var h := HQScreen.new()
+	h.setup(profile)
+	h.closed.connect(back)
+	_set_overlay(h)
+
+
+## New season: pick a charter and heat, then (maybe) the starting vehicles.
 func _on_new_game(p_slot: int) -> void:
 	slot = p_slot
+	var rs := RunSetup.new()
+	rs.setup(profile)
+	rs.chosen.connect(func(charter_id: String, heat: int):
+		_begin_run(profile.make_run(charter_id, heat), randi()))
+	rs.hq_requested.connect(func(): _show_hq(func(): _on_new_game(p_slot)))
+	rs.back_requested.connect(_show_title)
+	_set_overlay(rs)
+
+
+## Today's daily run: same seed, charter and heat for everyone, no HQ upgrades.
+func _on_daily_game(p_slot: int) -> void:
+	slot = p_slot
+	var dn := Season.daily_number()
+	var r := profile.make_run(Season.daily_charter(dn), Season.DAILY_HEAT, true)
+	r["daily_number"] = dn
+	profile.mark_daily(dn)
+	_begin_run(r, Season.daily_seed(dn))
+
+
+func _begin_run(run_cfg: Dictionary, run_seed: int) -> void:
+	var s := Sim.new()
+	s.setup(run_seed, [], run_cfg)
+	_set_session(s)
 	hud.visible = true
+	cam.home()
+	var ch := Season.charter(run_cfg["charter"])
+	if ch.has("fleet"):
+		_on_fleet_chosen(ch["fleet"], false)
+		return
 	var picker := StartScreen.new()
+	picker.cash = s.player().money
+	picker.charter_name = ch["name"]
 	picker.chosen.connect(_on_fleet_chosen)
 	picker.back_requested.connect(_show_title)
 	_set_overlay(picker)
@@ -97,6 +140,25 @@ func _on_fleet_chosen(vehicles: Array, tutorial: bool) -> void:
 	_want_tutorial = tutorial
 	submit_player({"type": "starter_fleet", "vehicles": vehicles})   # opens the first briefing
 	save_game()
+
+
+## The season is over (evicted or survived): bank the results, free the slot.
+func _finish_run() -> void:
+	speed = 0
+	select_van(null)
+	var result := sim.run_result
+	var changes := profile.record_run(result)
+	SaveGame.delete(slot)
+	started = false
+	var rs := RunSummary.new()
+	rs.setup(result, changes, profile, sim.report)
+	rs.again_requested.connect(func():
+		if result.get("daily", false):
+			_show_title()
+		else:
+			_on_new_game(slot))
+	rs.title_requested.connect(_show_title)
+	_set_overlay(rs)
 
 
 func _on_load_game(p_slot: int) -> void:
@@ -139,6 +201,8 @@ func _on_sim_event(n: String, _d: Dictionary) -> void:
 				_tutorial.setup(sim, hud, self)
 		"night":
 			_set_overlay(null)
+		"run_over":
+			_finish_run()
 
 
 ## Shows the briefing or the evening report if the sim is waiting on one.
@@ -156,6 +220,8 @@ func _show_phase_overlay() -> void:
 		r.setup(sim, self)
 	elif sim.phase == Sim.Phase.DAY:
 		set_speed(_last_speed)
+	elif sim.phase == Sim.Phase.OVER:
+		_finish_run()
 
 
 # ------------------------------------------------------------- frame

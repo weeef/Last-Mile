@@ -6,7 +6,8 @@ extends RefCounted
 ## plain data with Godot's binary var format.
 
 const SLOTS := 3
-const VERSION := 2
+const VERSION := 3
+const OLDEST := 2      # older saves still load (as classic endless games)
 
 const PARCEL_F := ["id", "company", "house", "district", "kind", "weight", "vendor", "job_id", "pay_amount",
 	"created", "deadline", "stage", "stage_times", "van_code", "late", "window_start", "window_end", "signature", "attempts"]
@@ -62,6 +63,8 @@ static func save(sim: Sim, slot: int) -> bool:
 			"company": p.name, "level": p.level, "level_name": p.level_info()["name"],
 			"day": sim.day(), "clock": sim.clock_now(), "money": p.money,
 			"fleet": p.vans.size(), "saved_at": int(Time.get_unix_time_from_system()),
+			"season": sim.season_on(), "charter": Season.charter(sim.run.get("charter", "courier"))["name"],
+			"heat": sim.heat(), "daily": sim.run.get("daily", false), "lease_due": Season.due_day(sim.day()),
 		},
 		"seed": sim.seed_value,
 		"rng_state": sim.rng.state,
@@ -84,6 +87,14 @@ static func save(sim: Sim, slot: int) -> bool:
 		"draft": sim.draft.duplicate(),
 		"draft_rerolls": sim.draft_rerolls,
 		"report": sim.report.duplicate(true),
+		"run": sim.run.duplicate(true),
+		"twist": sim.twist,
+		"week_twist": sim.week_twist,
+		"streak": sim.streak,
+		"lease_strikes": sim.lease_strikes,
+		"lease_debt": sim.lease_debt,
+		"run_stats": sim.run_stats.duplicate(true),
+		"run_result": sim.run_result.duplicate(true),
 	}
 	# Every parcel the sim still knows about, stored once and referenced by id.
 	var parcels := {}
@@ -135,10 +146,10 @@ static func save(sim: Sim, slot: int) -> bool:
 
 static func load_slot(slot: int) -> Sim:
 	var d := _read(slot)
-	if d.is_empty() or int(d.get("version", 0)) != VERSION:
+	if d.is_empty() or int(d.get("version", 0)) < OLDEST or int(d.get("version", 0)) > VERSION:
 		return null
 	var sim := Sim.new()
-	sim.setup(int(d["seed"]), [])          # rebuilds the identical town
+	sim.setup(int(d["seed"]), [], d.get("run", {}))   # rebuilds the identical town
 	sim.rng.state = d["rng_state"]
 	sim.tick = d["tick"]
 	sim.next_parcel_id = d["next_parcel_id"]
@@ -155,6 +166,13 @@ static func load_slot(slot: int) -> Sim:
 	sim.draft = d["draft"]
 	sim.draft_rerolls = d["draft_rerolls"]
 	sim.report = d["report"]
+	sim.twist = d.get("twist", "")
+	sim.week_twist = d.get("week_twist", "")
+	sim.streak = d.get("streak", 0)
+	sim.lease_strikes = d.get("lease_strikes", 0)
+	sim.lease_debt = d.get("lease_debt", 0.0)
+	sim.run_stats.merge(d.get("run_stats", {}), true)
+	sim.run_result = d.get("run_result", {})
 
 	var parcels := {}
 	for id in d["parcels"].keys():
