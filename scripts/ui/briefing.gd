@@ -32,7 +32,7 @@ func _build() -> void:
 	body.add_child(top)
 	if sim.season_on():
 		body.add_child(_season_strip())
-	var pending := not sim.morning_event.is_empty() and not sim.morning_event.get("done", false)
+	var pending: bool = not sim.morning_event.is_empty() and not sim.morning_event.get("done", false)
 	if not sim.morning_event.is_empty():
 		body.add_child(_event_box())
 

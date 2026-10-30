@@ -49,12 +49,12 @@ const DATA := {
 	&"front_of_line": {"name": "Mechanic's Friend", "rarity": 2, "kind": "company", "desc": "Your vehicles skip to the front of the garage line.", "fx": {"front_of_line": 1}},
 	&"express_lane": {"name": "Express Lane", "rarity": 3, "kind": "company", "desc": "Every delivery promise gets +30 min.", "fx": {"promise_add": 30.0}},
 	# ---- streak and season perks
-	&"tip_jar": {"name": "Tip Jar", "rarity": 0, "kind": "company", "desc": "On-time drops earn +$1 tip for every 5 in your streak.", "fx": {"tip_jar": 1}},
+	&"tip_jar": {"name": "Tip Jar", "rarity": 0, "kind": "company", "desc": "On-time drops earn +$1 tip for every 5 in your streak (up to +$5).", "fx": {"tip_jar": 1}},
 	&"piggy_bank": {"name": "Piggy Bank", "rarity": 0, "kind": "company", "desc": "Nightly savings interest can go $30 higher.", "fx": {"interest_cap": 30.0}, "season": true},
 	&"doorbell_cam": {"name": "Doorbell Cam", "rarity": 1, "kind": "company", "desc": "\"Nobody home\" no longer breaks your streak.", "fx": {"streak_guard": 1}},
 	&"second_wind": {"name": "Second Wind", "rarity": 1, "kind": "company", "desc": "A late parcel halves your streak instead of ending it.", "fx": {"second_wind": 1}},
 	&"haggler": {"name": "Lease Haggler", "rarity": 1, "kind": "company", "desc": "Every lease payment is 15% cheaper.", "fx": {"lease": 0.85}, "season": true},
-	&"hype_train": {"name": "Hype Train", "rarity": 2, "kind": "company", "desc": "Streak cap 25 to 40: up to x2.6 pay.", "fx": {"streak_cap": 15.0}},
+	&"hype_train": {"name": "Hype Train", "rarity": 2, "kind": "company", "desc": "Streak cap 25 to 40: up to x1.8 pay.", "fx": {"streak_cap": 15.0}},
 	# ---- route combo "jokers" and hustle
 	&"loading_boss": {"name": "Loading Bay Boss", "rarity": 0, "kind": "company", "desc": "Full Truck combos are worth +0.4 more.", "fx": {"combo_full": 0.4}},
 	&"espresso": {"name": "Espresso Machine", "rarity": 0, "kind": "company", "desc": "+4 max hustle, and start every day with +3 hustle.", "fx": {"hustle_cap": 4.0, "hustle_morning": 3.0}},

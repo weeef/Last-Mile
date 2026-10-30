@@ -79,11 +79,11 @@ func setup(p_sim: Sim, p_main: Node) -> void:
 	hand.tooltip_text = "Your load is scored like a poker hand. Come back with zero late parcels and the route's on-time pay is paid again times (multiplier - 1)."
 	var hh := UIKit.hbox(8)
 	hand.add_child(hh)
-	var hv := UIKit.vbox(-3)
-	hv.add_child(UIKit.head("Route hand", 11, Palette.TEXT_INV_SOFT))
+	var hand_v := UIKit.vbox(-3)
+	hand_v.add_child(UIKit.head("Route hand", 11, Palette.TEXT_INV_SOFT))
 	_hand_mult = UIKit.mono("x1.0", 22, Palette.PAPER, true)
-	hv.add_child(_hand_mult)
-	hh.add_child(hv)
+	hand_v.add_child(_hand_mult)
+	hh.add_child(hand_v)
 	_hand_hits = UIKit.label("", 12, Palette.PAPER, "head_semi")
 	_hand_hits.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hand_hits.size_flags_horizontal = Control.SIZE_EXPAND_FILL

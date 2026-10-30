@@ -9,7 +9,7 @@ const STATE_NAMES := ["Parked", "Loading", "En route", "Dropping off", "Returnin
 const BASE_SPEED := 0.55        # world units per tick
 const LOAD_MINUTES := 0.5       # per parcel
 const STOP_MINUTES := 1.6       # per drop-off
-const WAGE_PER_MIN := 0.40
+const WAGE_PER_MIN := 0.55
 const FUEL_PER_UNIT := 0.03
 const WEAR_PER_UNIT := 0.00008
 

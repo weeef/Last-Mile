@@ -11,13 +11,13 @@ extends RefCounted
 
 const DAYS := 12
 const WEEK_DAYS := 3
-const LEASES := [350.0, 800.0, 1500.0, 2400.0]   # due on day 3, 6, 9, 12
+const LEASES := [1000.0, 6000.0, 20000.0, 45000.0]   # due on day 3, 6, 9, 12
 const LATE_FEE := 1.2                              # carried debt grows 20%
 const PEAK_DEMAND := 2.0
 
 # ---------------------------------------------------------------- streaks
-const STREAK_STEP := 0.04          # pay bonus per on-time delivery in a row
-const STREAK_CAP := 25             # x2.0 at 25
+const STREAK_STEP := 0.02          # pay bonus per on-time delivery in a row
+const STREAK_CAP := 25             # x1.5 at 25; the streak resets every morning
 const STREAK_TIERS := [5, 10, 15, 20, 25, 30, 40]
 const STREAK_NAMES := {5: "Warming up", 10: "On a roll", 15: "Hot hands", 20: "On fire", 25: "Unstoppable", 30: "Legendary", 40: "Mythical"}
 
@@ -70,7 +70,7 @@ const CHARTER_ORDER := ["courier", "green", "budget", "premium", "haulers"]
 ## Difficulty ladder. Winning at heat N unlocks heat N+1. Effects stack.
 const HEAT := [
 	"Standard season.",
-	"Leases +15%.",
+	"Leases +15% (and every heat level adds another 8%).",
 	"Zoomer starts with 2 extra vans.",
 	"One fewer card in every draft.",
 	"No final notice: miss a lease and you're out.",
@@ -81,6 +81,16 @@ const HEAT := [
 ]
 const MAX_HEAT := 8
 const DAILY_HEAT := 2
+
+
+## Rent multiplier from heat: +8% per level, plus the heat 1 and heat 8 steps.
+static func heat_lease_mult(heat: int) -> float:
+	var m := 1.0 + 0.08 * heat
+	if heat >= 1:
+		m *= 1.15
+	if heat >= 8:
+		m *= 1.25
+	return m
 
 
 static func week_of(day: int) -> int:

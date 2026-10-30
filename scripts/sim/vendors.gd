@@ -21,9 +21,9 @@ const HEAVY_KG := 40.0   # anything heavier needs a liftgate (box truck)
 
 const LEVELS := [
 	{"name": "Corner Courier", "revenue": 0.0, "fleet": 3},
-	{"name": "Neighborhood Service", "revenue": 4000.0, "fleet": 5},
-	{"name": "Town Logistics", "revenue": 14000.0, "fleet": 8},
-	{"name": "City Express", "revenue": 35000.0, "fleet": 12},
+	{"name": "Neighborhood Service", "revenue": 8000.0, "fleet": 5},
+	{"name": "Town Logistics", "revenue": 30000.0, "fleet": 7},
+	{"name": "City Express", "revenue": 80000.0, "fleet": 10},
 ]
 
 

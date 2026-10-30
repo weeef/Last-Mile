@@ -10,17 +10,17 @@ extends RefCounted
 ## combo_all (every route), and the flag combo_double (3+ combos: bonus doubled).
 
 const DATA := {
-	"full": {"name": "Full Truck", "desc": "Every slot or the weight limit used.", "mult": 0.5},
-	"sweep": {"name": "Sweep", "desc": "3+ stops, all in one district.", "mult": 0.6},
-	"street": {"name": "Neighbors", "desc": "+0.1 for each extra stop on a street you already visit.", "mult": 0.1},
-	"haul": {"name": "Big Haul", "desc": "8+ stops.", "mult": 0.3},
-	"mega": {"name": "Mega Haul", "desc": "12+ stops.", "mult": 0.6},
-	"express": {"name": "Express Run", "desc": "2+ stops, every one express.", "mult": 0.5},
-	"mixed": {"name": "Mixed Bag", "desc": "Express, standard, vendor and walk-in parcels together.", "mult": 0.4},
-	"signed": {"name": "Signed & Sealed", "desc": "3+ parcels that need a signature.", "mult": 0.3},
+	"full": {"name": "Full Truck", "desc": "Every slot or the weight limit used.", "mult": 0.3},
+	"sweep": {"name": "Sweep", "desc": "3+ stops, all in one district.", "mult": 0.4},
+	"street": {"name": "Neighbors", "desc": "+0.05 for each extra stop on a street you already visit (up to +0.3).", "mult": 0.05},
+	"haul": {"name": "Big Haul", "desc": "8+ stops.", "mult": 0.2},
+	"mega": {"name": "Mega Haul", "desc": "12+ stops.", "mult": 0.4},
+	"express": {"name": "Express Run", "desc": "2+ stops, every one express.", "mult": 0.3},
+	"mixed": {"name": "Mixed Bag", "desc": "Express, standard, vendor and walk-in parcels together.", "mult": 0.25},
+	"signed": {"name": "Signed & Sealed", "desc": "3+ parcels that need a signature.", "mult": 0.2},
 }
 const ORDER := ["full", "sweep", "street", "mega", "haul", "express", "mixed", "signed"]
-const STREET_CAP := 0.6
+const STREET_CAP := 0.3
 
 
 ## Scores a load. Returns {"mult": float, "hits": [{"id", "name", "add"}]}.

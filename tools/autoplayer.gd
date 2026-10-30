@@ -66,7 +66,7 @@ static func act(sim: Sim, i: int) -> void:
 				break
 	if p.money > 1300 and not p.vendors_unlocked.has(1):
 		sim.submit({"type": "unlock_vendor", "company": 0, "vendor": 1})
-	elif p.money > 900 and p.vans.size() < p.fleet_cap():
+	elif p.money > 1100.0 + sim.lease_amount() + 200.0 and p.vans.size() < p.fleet_cap():
 		sim.submit({"type": "buy_van", "company": 0, "vehicle": &"van"})
 
 

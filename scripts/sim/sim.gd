@@ -488,11 +488,8 @@ func reroll_cost() -> float:
 func lease_amount() -> float:
 	if not season_on():
 		return 0.0
-	var m: float = charter().get("lease", 1.0) * (1.0 - 0.08 * hq("landlord")) * companies[PLAYER].perk("lease")
-	if heat() >= 1:
-		m *= 1.15
-	if heat() >= 8:
-		m *= 1.25
+	var m: float = charter().get("lease", 1.0) * (1.0 - 0.08 * hq("landlord")) * companies[PLAYER].perk("lease") \
+		* Season.heat_lease_mult(heat())
 	return roundf(Season.LEASES[Season.week_of(day())] * m) + roundf(lease_debt)
 
 
@@ -637,7 +634,7 @@ func _bump_streak(c: Company) -> float:
 		notice.emit("%s! %d on time in a row: deliveries pay x%.2f" % [Season.STREAK_NAMES[streak], streak, streak_mult()], "streak")
 		event.emit("streak_tier", {"streak": streak})
 	if c.has_perk_fx("tip_jar"):
-		return float(streak / 5)
+		return float(mini(streak, streak_cap()) / 5)
 	return 0.0
 
 
@@ -735,6 +732,7 @@ func _begin_morning(first := false) -> void:
 			has_heavy = true
 	contract_offers = Contracts.roll(rng, day(), maxi(1, p.vans.size()), has_heavy)
 	_roll_twists()
+	streak = 0                    # a fresh streak to chase every day
 	demand_boost = 1.0
 	green_wave_until = -1.0
 	_start_day_type(p)
@@ -931,7 +929,7 @@ func _spawn_walk_in(now: float) -> void:
 	if cid == PLAYER and boss_rule() == "bulkbarn":
 		p.weight *= 3.0
 	p.pay_amount = 18.0 if p.kind == Parcel.Kind.EXPRESS else 11.0
-	var promise := 75.0 if p.kind == Parcel.Kind.EXPRESS else 180.0
+	var promise := 60.0 if p.kind == Parcel.Kind.EXPRESS else 150.0
 	if cid == PLAYER:
 		promise *= promise_mult()
 		if season_on():
@@ -986,7 +984,7 @@ func _make_job(vi: int, now: float, rush := false) -> Job:
 		j.total_kg += w
 		dist_sum += city.manhattan(depot, city.houses[hid]["curb"])
 	j.express = rush or rng.randf() < vd["express"]
-	j.promise = 60.0 if rush else (90.0 if j.express else 200.0)
+	j.promise = 60.0 if rush else (75.0 if j.express else 170.0)
 	# Pay: a base fee, plus per stop, per kilogram and for distance from the depot.
 	var avg_dist := dist_sum / stops
 	var raw := 10.0 + stops * 6.0 + j.total_kg * 0.32 + avg_dist * 0.12 * stops

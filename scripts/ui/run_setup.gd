@@ -156,11 +156,8 @@ func _lease_box() -> Control:
 	var v := UIKit.vbox(4)
 	p.add_child(v)
 	v.add_child(UIKit.head("Your lease", 20, Palette.TEXT))
-	var m: float = Season.charter(_charter).get("lease", 1.0) * (1.0 - 0.08 * profile.level("landlord"))
-	if _heat >= 1:
-		m *= 1.15
-	if _heat >= 8:
-		m *= 1.25
+	var m: float = Season.charter(_charter).get("lease", 1.0) * (1.0 - 0.08 * profile.level("landlord")) \
+		* Season.heat_lease_mult(_heat)
 	for w in Season.LEASES.size():
 		var r := UIKit.hbox(8)
 		var l := UIKit.head("Day %d%s" % [(w + 1) * Season.WEEK_DAYS, "  ·  Holiday Peak" if w == Season.LEASES.size() - 1 else ""], 15, Palette.TEXT_SOFT)
