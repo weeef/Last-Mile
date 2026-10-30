@@ -100,6 +100,13 @@ static func save(sim: Sim, slot: int) -> bool:
 		"green_wave_until": sim.green_wave_until,
 		"demand_boost": sim.demand_boost,
 		"morning_event": sim.morning_event.duplicate(true),
+		"today_type": sim.today_type,
+		"tomorrow_type": sim.tomorrow_type,
+		"day_options": sim.day_options.duplicate(),
+		"week_boss": sim.week_boss,
+		"evening_stage": sim.evening_stage,
+		"shop": sim.shop.duplicate(true),
+		"shop_rerolls": sim.shop_rerolls,
 	}
 	# Every parcel the sim still knows about, stored once and referenced by id.
 	var parcels := {}
@@ -183,6 +190,15 @@ static func load_slot(slot: int) -> Sim:
 	sim.green_wave_until = d.get("green_wave_until", -1.0)
 	sim.demand_boost = d.get("demand_boost", 1.0)
 	sim.morning_event = d.get("morning_event", {})
+	sim.today_type = d.get("today_type", "normal")
+	sim.tomorrow_type = d.get("tomorrow_type", "")
+	sim.day_options = d.get("day_options", [])
+	sim.week_boss = d.get("week_boss", "")
+	sim.evening_stage = d.get("evening_stage", "")
+	sim.shop = d.get("shop", [])
+	sim.shop_rerolls = d.get("shop_rerolls", 0)
+	if sim.phase == Sim.Phase.EVENING and sim.evening_stage == "":
+		sim.evening_stage = "draft"     # saves from before the evening stages
 
 	var parcels := {}
 	for id in d["parcels"].keys():

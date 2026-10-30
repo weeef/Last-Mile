@@ -13,6 +13,12 @@ func play(seed_value: int, charter: String, heat: int, verbose: bool) -> Sim:
 					("  LEASE $%d %s" % [int(l["amount"]), "paid" if l["paid"] else ("FINAL NOTICE" if l["strike"] else "EVICTED")]) if not l.is_empty() else ""])
 			elif n == "morning" and sim.twist != "":
 				print("   day %2d twist: %s" % [sim.day(), Season.twist_name(sim.twist)])
+			elif n == "plan_tomorrow":
+				print("   day %2d plan options: %s" % [sim.day(), sim.day_options])
+			elif n == "morning" and sim.today_type != "normal":
+				print("   day %2d is a %s%s" % [sim.day(), Season.DAY_TYPES[sim.today_type]["name"], (" (" + Bosses.get_boss(sim.week_boss)["client"] + ")") if sim.today_type == "boss" else ""])
+			elif n == "card_applied" and Cards.get_card(d["card"])["rarity"] == Cards.Rarity.RELIC:
+				print("   RELIC: %s" % Cards.get_card(d["card"])["name"])
 			elif n == "event_resolved":
 				print("   day %2d event %s -> %s" % [sim.day(), d["id"], d["result"]])
 			elif n == "route_combo" and d["mult"] >= 2.0:

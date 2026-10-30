@@ -21,6 +21,7 @@ var _settings_menu: SettingsMenu = null
 var _tutorial: Tutorial = null
 var _want_tutorial := false
 var profile := Profile.load_or_new()
+var audio: GameAudio
 var skipping := false         # fast-forward until something needs the player
 var _skip_ready := 0
 const SKIP_SPEED := 16
@@ -30,6 +31,8 @@ const SKIP_STOP_EVENTS := ["rush_order", "breakdown", "job_arrived", "van_home",
 func _ready() -> void:
 	get_tree().set_auto_accept_quit(false)
 	settings.load_or_detect()
+	audio = GameAudio.new()
+	add_child(audio)
 	cam = CameraRig.new()
 	add_child(cam)
 	cam.clicked.connect(_on_world_clicked)
@@ -60,6 +63,7 @@ func _set_session(new_sim: Sim) -> void:
 	layer.move_child(hud, 0)
 	hud.setup(sim, self)
 	sim.event.connect(_on_sim_event)
+	sim.parcel_delivered.connect(_on_delivered_sound)
 	apply_settings()
 	_acc = 0.0
 
@@ -80,6 +84,7 @@ func _show_title() -> void:
 	_set_session(backdrop)
 	hud.visible = false
 	cam.home()
+	GameAudio.music("title")
 	var t := TitleScreen.new()
 	t.profile = profile
 	t.new_game.connect(_on_new_game)
@@ -191,6 +196,7 @@ func _on_sim_event(n: String, _d: Dictionary) -> void:
 		return
 	if skipping and n in SKIP_STOP_EVENTS:
 		_stop_skip()
+	_event_sound(n, _d)
 	match n:
 		"morning":
 			save_game()
@@ -209,6 +215,74 @@ func _on_sim_event(n: String, _d: Dictionary) -> void:
 			_set_overlay(null)
 		"run_over":
 			_finish_run()
+
+
+# ------------------------------------------------------------- audio
+
+## Sound and music cues for sim events (the sim itself stays silent).
+func _event_sound(n: String, d: Dictionary) -> void:
+	match n:
+		"morning":
+			GameAudio.music("desk")
+			if not sim.morning_event.is_empty():
+				GameAudio.sfx("event")
+		"day_begun":
+			GameAudio.music("peak" if sim.today_type == "boss" or sim.is_peak_day() else "day")
+		"evening":
+			GameAudio.music("desk")
+			var lease: Dictionary = d.get("lease", {})
+			if lease.get("paid", false):
+				GameAudio.sfx("rent_paid")
+			elif lease.get("strike", false):
+				GameAudio.sfx("notice")
+			elif d.get("contract_done", false):
+				GameAudio.sfx("coin")
+		"run_over":
+			GameAudio.music("title")
+			GameAudio.sfx("win" if d.get("won", false) else "evicted")
+		"route_combo":
+			GameAudio.sfx("jackpot" if d["mult"] >= 2.0 else "cash")
+		"route_bust":
+			GameAudio.sfx("bust", 1.0, -3.0)
+		"streak_tier":
+			GameAudio.sfx("streak", 1.0 + minf(d["streak"], 40) / 80.0)
+		"streak_broken":
+			GameAudio.sfx("streak_break")
+		"breakdown":
+			if d["van"].company == Sim.PLAYER:
+				GameAudio.sfx("breakdown")
+		"rush_order":
+			GameAudio.sfx("rush", 1.0, -3.0)
+		"ability":
+			GameAudio.sfx("power")
+		"van_departed":
+			if d["van"].company == Sim.PLAYER:
+				GameAudio.sfx("depart", randf_range(0.92, 1.08), -10.0)
+		"contract_done", "level_up":
+			GameAudio.sfx("level_up")
+		"event_resolved":
+			GameAudio.sfx("stamp")
+		"card_applied":
+			GameAudio.sfx("relic" if Cards.get_card(d["card"])["rarity"] == Cards.Rarity.RELIC else "card")
+		"shop_changed":
+			GameAudio.sfx("coin")
+		"plan_tomorrow", "draft_rerolled":
+			GameAudio.sfx("card")
+
+
+## The delivery "ding" climbs a pentatonic scale as the streak grows (two octaves).
+func _on_delivered_sound(p: Parcel, v: Van, _pay: float) -> void:
+	if not started or v.company != Sim.PLAYER:
+		return
+	if p.late:
+		GameAudio.sfx("late", 1.0, -4.0)
+	else:
+		var step := mini(maxi(sim.streak - 1, 0), 9)
+		var semis: float = PENTATONIC[step % 5] + 12.0 * (step / 5)
+		GameAudio.sfx("ding", 0.75 * pow(2.0, semis / 12.0), -7.0)
+
+
+const PENTATONIC := [0.0, 2.0, 4.0, 7.0, 9.0]
 
 
 ## Shows the briefing or the evening report if the sim is waiting on one.
@@ -328,6 +402,8 @@ func apply_settings() -> void:
 		world.apply_graphics(settings)
 	if hud:
 		hud.show_fps = settings.show_fps == 1
+	if audio:
+		audio.set_volumes(settings.music_volume / 10.0, settings.sfx_volume / 10.0)
 
 
 func open_settings() -> void:

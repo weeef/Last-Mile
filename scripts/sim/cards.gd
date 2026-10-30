@@ -11,11 +11,14 @@ extends RefCounted
 ##   streaks + season: streak_guard (flag), second_wind (flag), streak_cap (+add), streak_floor (+add),
 ##   tip_jar (flag), lease (mult), interest_cap (+add)
 ##   route combos (see Combos): combo_full, combo_sweep, combo_street, combo_all (+add), combo_double (flag)
-##   hustle: hustle_cap (+add), hustle_morning (+add)
+##   hustle: hustle_cap (+add), hustle_morning (+add), hustle_per_drop (+add)
+##   relics (rarity RELIC, only from boss clients): mood_floor (+add), wage (mult), combo_scale (mult),
+##   fleet_speed (mult), golden_ticket (flag), free_reroll (flag), first_stop_free (flag)
 
-enum Rarity { COMMON, UNCOMMON, RARE, ULTRA }
-const RARITY_NAMES := ["Common", "Uncommon", "Rare", "Ultra rare"]
-const RARITY_COLORS := [Color("8a8170"), Color("4f7a46"), Color("2f5f86"), Color("d17a22")]
+enum Rarity { COMMON, UNCOMMON, RARE, ULTRA, RELIC }
+const RARITY_NAMES := ["Common", "Uncommon", "Rare", "Ultra rare", "Relic"]
+const RARITY_COLORS := [Color("8a8170"), Color("4f7a46"), Color("2f5f86"), Color("d17a22"), Color("8e3f9e")]
+const SHOP_PRICES := [60.0, 110.0, 190.0, 320.0]
 const RARITY_WEIGHTS := [60.0, 28.0, 10.0, 2.0]
 
 const DATA := {
@@ -59,8 +62,33 @@ const DATA := {
 	&"block_party": {"name": "Block Party", "rarity": 1, "kind": "company", "desc": "Neighbors combos are worth double.", "fx": {"combo_street": 0.1}},
 	&"ace_courier": {"name": "Ace Courier", "rarity": 2, "kind": "company", "desc": "Every route gets +0.3 multiplier, even with no combo.", "fx": {"combo_all": 0.3}},
 	&"double_down": {"name": "Double Down", "rarity": 3, "kind": "company", "desc": "Clean runs with 3+ combos pay their bonus twice.", "fx": {"combo_double": 1}},
+	# ---- relics: boss rewards only, never in a normal draft
+	&"landlords_cat": {"name": "The Landlord's Cat", "rarity": 4, "kind": "company", "desc": "Rent is 25% cheaper. He just likes you now.", "fx": {"lease": 0.75}, "season": true},
+	&"union_contract": {"name": "Union Contract", "rarity": 4, "kind": "company", "desc": "Driver moods never drop below 60. Wages +40%.", "fx": {"mood_floor": 60.0, "wage": 1.4}},
+	&"double_decker": {"name": "Double-Decker", "rarity": 4, "kind": "company", "desc": "Route combos count double. Your vehicles are 15% slower.", "fx": {"combo_scale": 2.0, "fleet_speed": 0.85}},
+	&"golden_ticket": {"name": "Golden Ticket", "rarity": 4, "kind": "company", "desc": "Every 10th on-time drop pays +$40.", "fx": {"golden_ticket": 1}},
+	&"hustle_engine": {"name": "Hustle Engine", "rarity": 4, "kind": "company", "desc": "+8 max hustle, and +1 extra hustle per on-time drop.", "fx": {"hustle_cap": 8.0, "hustle_per_drop": 1.0}},
+	&"crystal_ball": {"name": "Crystal Ball", "rarity": 4, "kind": "company", "desc": "Card rerolls are always free.", "fx": {"free_reroll": 1}},
+	&"pneumatic_tube": {"name": "Pneumatic Tube", "rarity": 4, "kind": "company", "desc": "The first drop of every route takes no time at all.", "fx": {"first_stop_free": 1}},
 	&"golden_hour": {"name": "Golden Hour", "rarity": 3, "kind": "company", "desc": "Once past 10, your streak never drops below 10.", "fx": {"streak_floor": 10.0}},
 }
+
+
+## Relic choices for beating a boss client (ones you don't own yet).
+static func roll_relics(rng: RandomNumberGenerator, count: int, owned: Array) -> Array:
+	var pool: Array = []
+	for id in DATA.keys():
+		if DATA[id]["rarity"] == Rarity.RELIC and not owned.has(id):
+			pool.append(id)
+	pool.sort()
+	var out: Array = []
+	while out.size() < count and not pool.is_empty():
+		out.append(pool.pop_at(rng.randi_range(0, pool.size() - 1)))
+	return out
+
+
+static func price(id: StringName) -> float:
+	return SHOP_PRICES[mini(DATA[id]["rarity"], SHOP_PRICES.size() - 1)]
 
 
 static func get_card(id: StringName) -> Dictionary:

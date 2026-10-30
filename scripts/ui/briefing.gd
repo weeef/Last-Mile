@@ -92,19 +92,35 @@ func _season_strip() -> Control:
 	h.add_child(sep)
 	var tw := UIKit.vbox(-2)
 	tw.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var tid := sim.twist if sim.twist != "" else sim.week_twist
-	var today := sim.twist != ""
-	var title := "Twist today" if today else "Twist on day %d" % due
-	if sim.is_peak_day():
-		title = "HOLIDAY PEAK · demand x%.0f" % Season.PEAK_DEMAND
-	tw.add_child(UIKit.head(title, 12, Palette.RED if today or sim.is_peak_day() else Palette.TEXT_SOFT))
+	# Twist: today, or coming on the middle day of the week.
+	var tid := sim.twist
+	var today := tid != ""
+	if not today and d % Season.WEEK_DAYS == 1:
+		tid = sim.week_twist
 	if tid != "":
-		tw.add_child(UIKit.head(Season.twist_name(tid), 22, Palette.ORANGE if today else Palette.TEXT))
+		tw.add_child(UIKit.head("Twist today" if today else "Twist tomorrow", 12, Palette.RED if today else Palette.TEXT_SOFT))
+		tw.add_child(UIKit.head(Season.twist_name(tid), 20, Palette.ORANGE if today else Palette.TEXT))
 		var td := UIKit.label(Season.TWISTS[tid]["desc"], 12, Palette.TEXT_SOFT)
 		td.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		td.custom_minimum_size.x = 340
+		td.custom_minimum_size.x = 300
 		tw.add_child(td)
 	h.add_child(tw)
+	# Boss client on rent day.
+	var bv := UIKit.vbox(-2)
+	bv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if sim.week_boss != "":
+		var b := Bosses.get_boss(sim.week_boss)
+		var boss_today := sim.today_type == "boss"
+		var head := "Boss client today" if boss_today else "Boss client on day %d" % due
+		if sim.is_peak_day():
+			head = "HOLIDAY PEAK BOSS · demand x%.0f" % Season.PEAK_DEMAND
+		bv.add_child(UIKit.head(head, 12, Palette.RED if boss_today else Palette.TEXT_SOFT))
+		bv.add_child(UIKit.head("%s · %s" % [b["client"], b["title"]], 20, Palette.PURPLE if boss_today else Palette.TEXT))
+		var bd := UIKit.label(b["rule"], 12, Palette.TEXT_SOFT)
+		bd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		bd.custom_minimum_size.x = 300
+		bv.add_child(bd)
+	h.add_child(bv)
 	var sv := UIKit.vbox(-2)
 	sv.add_child(UIKit.head("Final notices", 12, Palette.TEXT_SOFT))
 	var left_strikes := sim.strikes_allowed() - sim.lease_strikes
@@ -158,6 +174,35 @@ func _event_box() -> Control:
 	return p
 
 
+## A boss client's contract: wider, purple, and it pays a relic.
+func _boss_ticket(i: int, c: Dictionary, locked: bool) -> Control:
+	var b := Bosses.get_boss(c["boss"])
+	var p := PanelContainer.new()
+	var st := UIKit.paper_style(Palette.PAPER, 16, 7)
+	st.border_color = Palette.PURPLE
+	st.set_border_width_all(4)
+	st.border_width_top = 10
+	p.add_theme_stylebox_override("panel", st)
+	p.custom_minimum_size = Vector2(560, 0)
+	var v := UIKit.vbox(5)
+	p.add_child(v)
+	var h := UIKit.hbox(10)
+	h.add_child(UIKit.stamp("Boss client", Palette.PURPLE, 14))
+	h.add_child(UIKit.head("%s · %s" % [b["client"], b["title"]], 24, Palette.TEXT))
+	v.add_child(h)
+	var rule := UIKit.label("Rule today: " + b["rule"], 14, Palette.RED, "bold")
+	rule.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rule.custom_minimum_size.x = 520
+	v.add_child(rule)
+	v.add_child(UIKit.head(Contracts.describe(c), 22, Palette.TEXT))
+	v.add_child(UIKit.mono("+%s  and pick 1 of 2 relics" % UIKit.money(c["reward"]), 18, Palette.GREEN, true))
+	var take := UIKit.button("Take them on", "go", 18)
+	take.disabled = locked
+	take.pressed.connect(func(): main.submit_player({"type": "pick_contract", "index": i}))
+	v.add_child(take)
+	return p
+
+
 func _weather_note() -> String:
 	match sim.weather:
 		1:
@@ -191,6 +236,8 @@ func _info_box(title: String, value: String, note: String) -> Control:
 
 
 func _contract_ticket(i: int, c: Dictionary, locked := false) -> Control:
+	if c.has("boss"):
+		return _boss_ticket(i, c, locked)
 	var tier: Dictionary = Contracts.TIERS[c["tier"]]
 	var col: Color = [Palette.GREEN, Palette.BLUE, Palette.ORANGE][c["tier"]]
 	var p := PanelContainer.new()

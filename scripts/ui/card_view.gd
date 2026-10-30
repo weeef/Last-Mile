@@ -17,7 +17,9 @@ func setup(id: StringName) -> void:
 	clip_contents = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	mouse_entered.connect(func(): _hovering = true)
+	mouse_entered.connect(func():
+		_hovering = true
+		GameAudio.sfx("card", randf_range(0.9, 1.1), -14.0))
 	mouse_exited.connect(func(): _hovering = false)
 	var c := Cards.get_card(id)
 	var vehicle: bool = c["kind"] == "vehicle"
@@ -64,7 +66,7 @@ func _draw() -> void:
 	var col: Color = Cards.RARITY_COLORS[c["rarity"]]
 	var r := Rect2(Vector2.ZERO, size)
 	draw_rect(r, Palette.PAPER.lerp(Color.WHITE, 0.25 * _hover))
-	if c["rarity"] == Cards.Rarity.ULTRA:
+	if c["rarity"] >= Cards.Rarity.ULTRA:
 		# foil: drifting diagonal gold stripes
 		var x := -size.y + fmod(_time * 30.0, 28.0)
 		while x < size.x:

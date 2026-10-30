@@ -1,10 +1,12 @@
 class_name DayReport
 extends ModalSheet
-## Evening: the day's report card, then draft one upgrade card.
+## Evening: the day's report card, then one of: draft an upgrade card, pick a
+## boss relic, or shop (market days). Then plan what tomorrow will be.
 
 var sim: Sim
 var main: Node
 var _picking: StringName = &""
+var _shop_index := -1
 
 
 func setup(p_sim: Sim, p_main: Node) -> void:
@@ -15,7 +17,7 @@ func setup(p_sim: Sim, p_main: Node) -> void:
 
 
 func _on_event(n: String, _d: Dictionary) -> void:
-	if n == "draft_rerolled" and is_inside_tree():
+	if n in ["draft_rerolled", "shop_changed", "plan_tomorrow"] and is_inside_tree():
 		_picking = &""
 		_build()
 
@@ -71,18 +73,30 @@ func _build() -> void:
 	if sim.season_on():
 		body.add_child(_season_row(r))
 	body.add_child(UIKit.rule())
-	if _picking == &"":
-		_build_draft()
-	else:
-		_build_vehicle_pick()
+	match sim.evening_stage:
+		"plan":
+			_build_plan()
+		"shop":
+			if _picking == &"":
+				_build_shop()
+			else:
+				_build_vehicle_pick()
+		_:
+			if _picking == &"":
+				_build_draft()
+			else:
+				_build_vehicle_pick()
 
 
 func _build_draft() -> void:
 	var r := sim.report
+	var relic := sim.evening_stage == "relic"
 	var hdr := UIKit.hbox(8)
-	hdr.add_child(UIKit.head("Pick an upgrade", 22, Palette.TEXT))
+	hdr.add_child(UIKit.head("Boss beaten! Pick a relic" if relic else "Pick an upgrade", 22, Palette.PURPLE if relic else Palette.TEXT))
 	var why := ""
-	if r.get("min_rarity", 0) >= 2:
+	if relic:
+		why = "Relics bend the rules and only come from boss clients"
+	elif r.get("min_rarity", 0) >= 2:
 		why = "Heroic contract: Rare or better guaranteed"
 	elif r.get("boost", 0) > 0:
 		why = "Ambitious contract: better odds"
@@ -104,13 +118,106 @@ func _build_draft() -> void:
 	var cost := sim.reroll_cost()
 	var reroll := UIKit.button("Reroll  %s" % (UIKit.money(cost) if cost > 0.0 else "free"), "paper", 15)
 	reroll.disabled = sim.player().money < cost
+	reroll.visible = not relic
 	reroll.pressed.connect(func(): main.submit_player({"type": "reroll_draft"}))
 	actions.add_child(reroll)
 	actions.add_child(UIKit.spacer())
-	var skip := UIKit.button("Skip, take $40", "ink", 15)
+	var skip := UIKit.button("Skip, take $100" if relic else "Skip, take $40", "ink", 15)
 	skip.pressed.connect(func(): main.submit_player({"type": "skip_card"}))
 	actions.add_child(skip)
 	body.add_child(actions)
+
+
+## Market day: buy as many cards as you can afford, plus a couple of services.
+func _build_shop() -> void:
+	var p := sim.player()
+	var hdr := UIKit.hbox(8)
+	hdr.add_child(UIKit.head("The market is open", 22, Palette.TEXT))
+	var w := UIKit.label("· buy as many as you like, the till is the limit", 13, Palette.TEXT_SOFT, "head_semi")
+	w.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hdr.add_child(w)
+	body.add_child(hdr)
+	var row := UIKit.hbox(14)
+	for i in sim.shop.size():
+		var item: Dictionary = sim.shop[i]
+		var col := UIKit.vbox(6)
+		var cv := CardView.new()
+		cv.setup(item["id"])
+		cv.modulate.a = 0.4 if item["sold"] else 1.0
+		var idx := i
+		cv.picked.connect(func(_id): _buy(idx))
+		col.add_child(cv)
+		var b := UIKit.button("Sold" if item["sold"] else "Buy  %s" % UIKit.money(item["price"]), "go", 15)
+		b.disabled = item["sold"] or p.money < item["price"]
+		b.pressed.connect(func(): _buy(idx))
+		col.add_child(b)
+		row.add_child(col)
+	body.add_child(row)
+	var services := UIKit.hbox(8)
+	var tune := UIKit.button("Tune up the fleet  %s" % UIKit.money(Sim.SHOP_TUNEUP_PER_VAN * p.vans.size()), "paper", 14)
+	tune.disabled = p.money < Sim.SHOP_TUNEUP_PER_VAN * p.vans.size()
+	tune.pressed.connect(func(): main.submit_player({"type": "shop_service", "service": "tuneup"}))
+	services.add_child(tune)
+	var hb := UIKit.button("Refill hustle  %s" % UIKit.money(Sim.SHOP_HUSTLE), "paper", 14)
+	hb.disabled = p.money < Sim.SHOP_HUSTLE or sim.hustle >= sim.hustle_cap()
+	hb.pressed.connect(func(): main.submit_player({"type": "shop_service", "service": "hustle"}))
+	services.add_child(hb)
+	var rr := UIKit.button("Restock  %s" % UIKit.money(sim.shop_reroll_cost()), "paper", 14)
+	rr.disabled = p.money < sim.shop_reroll_cost()
+	rr.pressed.connect(func(): main.submit_player({"type": "shop_reroll"}))
+	services.add_child(rr)
+	services.add_child(UIKit.spacer())
+	var leave := UIKit.button("Leave the market", "ink", 15)
+	leave.pressed.connect(func(): main.submit_player({"type": "shop_leave"}))
+	services.add_child(leave)
+	body.add_child(services)
+	body.add_child(UIKit.label("Rent check: %s due on day %d. You have %s." % [UIKit.money(sim.lease_amount()), Season.due_day(sim.day()), UIKit.money(p.money)], 13, Palette.TEXT_SOFT, "bold"))
+
+
+func _buy(i: int) -> void:
+	var item: Dictionary = sim.shop[i]
+	if item["sold"] or sim.player().money < item["price"]:
+		return
+	if Cards.is_vehicle(item["id"]):
+		_picking = item["id"]
+		_shop_index = i
+		_build()
+	else:
+		main.submit_player({"type": "shop_buy", "index": i})
+
+
+## Choose what tomorrow will be (the branching path).
+func _build_plan() -> void:
+	var hdr := UIKit.hbox(8)
+	hdr.add_child(UIKit.head("Plan tomorrow · day %d" % (sim.day() + 1), 22, Palette.TEXT))
+	var left := Season.due_day(sim.day() + 1) - sim.day() - 1
+	var w := UIKit.label("· rent and a boss client in %d day%s" % [left, "" if left == 1 else "s"], 13, Palette.TEXT_SOFT, "head_semi")
+	w.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hdr.add_child(w)
+	body.add_child(hdr)
+	var row := UIKit.hbox(12)
+	for i in sim.day_options.size():
+		var id: String = sim.day_options[i]
+		var t: Dictionary = Season.DAY_TYPES[id]
+		var p := PanelContainer.new()
+		var st := UIKit.paper_style(Palette.PAPER_2, 14, 5)
+		st.border_width_top = 8
+		st.border_color = {"rush": Palette.RED, "market": Palette.GREEN, "quiet": Palette.BLUE, "mystery": Palette.PURPLE}.get(id, Palette.INK)
+		p.add_theme_stylebox_override("panel", st)
+		p.custom_minimum_size = Vector2(240, 0)
+		var v := UIKit.vbox(6)
+		p.add_child(v)
+		v.add_child(UIKit.head(t["name"], 24, Palette.TEXT))
+		var d := UIKit.label(t["desc"], 13, Palette.TEXT)
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.custom_minimum_size = Vector2(212, 54)
+		v.add_child(d)
+		var b := UIKit.button("Go this way", "go", 16)
+		var idx := i
+		b.pressed.connect(func(): main.submit_player({"type": "pick_day", "index": idx}))
+		v.add_child(b)
+		row.add_child(p)
+	body.add_child(row)
 
 
 ## Interest, streak and (on due evenings) the lease bill.
@@ -181,7 +288,11 @@ func _build_vehicle_pick() -> void:
 		var full := v.mods.size() >= v.mod_slots()
 		var b := UIKit.button("Replace %s" % Cards.get_card(v.mods[0])["name"] if full else "Install", "paper" if full else "go", 14)
 		var vid := v.id
-		b.pressed.connect(func(): main.submit_player({"type": "pick_card", "index": sim.draft.find(_picking), "van": vid}))
+		b.pressed.connect(func():
+			if sim.evening_stage == "shop":
+				main.submit_player({"type": "shop_buy", "index": _shop_index, "van": vid})
+			else:
+				main.submit_player({"type": "pick_card", "index": sim.draft.find(_picking), "van": vid}))
 		h.add_child(b)
 		list.add_child(row)
 	body.add_child(list)

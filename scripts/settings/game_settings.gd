@@ -18,6 +18,7 @@ const MSAA := ["Off", "2x", "4x"]
 const SHADOWS := ["Off", "Low", "High"]
 const DETAIL := ["Low", "Medium", "High"]
 const ONOFF := ["Off", "On"]
+const VOLUMES := ["Off", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%"]
 
 # Display
 var window_mode := 1
@@ -33,6 +34,9 @@ var shadows := 1
 var fog := 1
 var detail := 1
 var show_fps := 0
+# Audio (index into VOLUMES)
+var music_volume := 6
+var sfx_volume := 8
 var first_run := true
 
 
@@ -115,7 +119,7 @@ func save() -> void:
 
 func _keys() -> Array:
 	return ["window_mode", "resolution", "ui_scale", "vsync", "fps_limit", "preset", "render_scale",
-		"msaa", "shadows", "fog", "detail", "show_fps"]
+		"msaa", "shadows", "fog", "detail", "show_fps", "music_volume", "sfx_volume"]
 
 
 func resolution_label(i: int) -> String:

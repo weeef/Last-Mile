@@ -56,6 +56,10 @@ func setup(p_settings: GameSettings, p_main: Node) -> void:
 	_row(v, "detail", "Scenery detail", GameSettings.DETAIL)
 	_row(v, "show_fps", "Show FPS", GameSettings.ONOFF)
 	v.add_child(UIKit.rule())
+	v.add_child(UIKit.head("Audio", 16, Palette.TEXT_SOFT))
+	_row(v, "music_volume", "Music", GameSettings.VOLUMES)
+	_row(v, "sfx_volume", "Sound effects", GameSettings.VOLUMES)
+	v.add_child(UIKit.rule())
 	_gpu = UIKit.label("", 12, Palette.TEXT_SOFT)
 	_gpu.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_gpu.custom_minimum_size.x = 470

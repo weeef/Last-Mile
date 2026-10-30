@@ -35,6 +35,7 @@ const GOALS := [
 	{"id": "day80", "name": "Parcel storm", "desc": "Deliver 80 parcels in one day.", "rep": 12},
 	{"id": "fleet7", "name": "Small empire", "desc": "Run 7 vehicles at once.", "rep": 12},
 	{"id": "combo3", "name": "Royal flush", "desc": "Cash a clean run at x3.0 or better.", "rep": 15},
+	{"id": "boss3", "name": "Boss fight", "desc": "Beat 3 boss clients in one season.", "rep": 15},
 	{"id": "heat3", "name": "Feeling the heat", "desc": "Win a season at heat 3 or higher.", "rep": 20},
 	{"id": "charters3", "name": "Franchise", "desc": "Win with 3 different charters.", "rep": 25},
 	{"id": "heat6", "name": "Furnace", "desc": "Win a season at heat 6 or higher.", "rep": 30},
@@ -203,6 +204,8 @@ func _goal_met(id: String, r: Dictionary) -> bool:
 			return r.get("three_star_days", 0) >= 1
 		"streak10":
 			return r.get("best_streak", 0) >= 10
+		"boss3":
+			return r.get("bosses_beaten", 0) >= 3
 		"combo2":
 			return r.get("best_combo", 0.0) >= 2.0
 		"combo3":

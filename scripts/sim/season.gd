@@ -32,6 +32,19 @@ const TWISTS := {
 }
 const TWIST_ORDER := ["gridlock", "heatwave", "inspector", "blitz", "viral", "tight"]
 
+# ---------------------------------------------------------------- day plan
+## Each evening (except before rent day) you pick what tomorrow will be, like a
+## path on a map. Rent day is always a boss client.
+const DAY_TYPES := {
+	"normal": {"name": "Regular day", "desc": "Business as usual."},
+	"rush": {"name": "Rush day", "desc": "Demand +50% and every drop pays +25%. Busy, risky, lucrative."},
+	"market": {"name": "Market day", "desc": "Vehicles 20% off. Tonight a shop opens instead of the card draft."},
+	"quiet": {"name": "Quiet day", "desc": "Demand -40%. Every vehicle +15% condition, every driver +10 mood."},
+	"mystery": {"name": "Mystery", "desc": "A morning event is guaranteed, plus a free card."},
+	"boss": {"name": "Boss client", "desc": "Rent day. A boss client sets the rules."},
+}
+const PLAN_POOL := ["normal", "rush", "market", "quiet", "mystery"]
+
 # ---------------------------------------------------------------- charters
 ## Starting companies. "fleet" fixes the starting vehicles (otherwise you pick two).
 const CHARTERS := {
@@ -61,7 +74,7 @@ const HEAT := [
 	"Zoomer starts with 2 extra vans.",
 	"One fewer card in every draft.",
 	"No final notice: miss a lease and you're out.",
-	"Twists also hit the middle day of every week.",
+	"Twists hit rent day too, on top of the boss.",
 	"Every promise is 15% tighter.",
 	"Breakdowns +50%.",
 	"Leases +25% more. Good luck.",

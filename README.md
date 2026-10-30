@@ -1,4 +1,4 @@
-# Last Mile — Prototype v0.6
+# Last Mile — Prototype v0.7
 
 A cozy-but-moody 3D logistics game about growing a tiny delivery outfit.
 Open this folder in **Godot 4.7** and press **F5**.
@@ -16,11 +16,23 @@ Every new game is a **12-day season** on a fresh, randomly seeded town.
   van you buy is a bet against making rent.
 - **Miss a payment** and you get a **final notice**: what you have is taken, the rest plus
   a 20% late fee rolls into next week's rent. Miss again and you're **evicted**: run over.
-- **Twists.** Each week rolls a twist that hits on its due day, and the briefing warns you
-  two days ahead: Gridlock, Heatwave, Inspector Visit (late parcels are fined), Zoomer
+- **Twists.** Each week rolls a twist that hits on its middle day, and the briefing warns
+  you the day before: Gridlock, Heatwave, Inspector Visit (late parcels are fined), Zoomer
   Blitz, Viral Unboxing, Tight Promises.
-- **Day 12 is Holiday Peak**: double demand on top of the week's twist, with the
-  biggest rent of the season due that night. Pay it and you've won.
+- **Boss clients on rent day.** Each rent day a named client takes over with a rule that
+  holds all day: Mrs. Henderson (everything needs a signature), TechCorp (half your
+  walk-ins are express), The Mayor (late parcels pay nothing), Chef Rossi (shorter
+  promises), StreamQueen (late parcels are fined), Bulk Barn (triple-weight parcels).
+  Beat their contract and pick one of two **relics**, rule-breaking cards you can't get
+  any other way: The Landlord's Cat, Union Contract, Double-Decker, Golden Ticket, Hustle
+  Engine, Crystal Ball, Pneumatic Tube.
+- **Plan tomorrow.** Each evening you choose what the next day will be from three paths:
+  **Rush day** (+50% demand, +25% pay), **Market day** (vehicles 20% off, and that
+  evening a **shop** opens instead of the card draft: buy cards, tune up the fleet,
+  refill hustle, restock), **Quiet day** (calm, repairs and morale), **Mystery** (an
+  event and a free card) or a **Regular day**.
+- **Day 12 is Holiday Peak**: double demand and the last boss client, with the biggest
+  rent of the season due that night. Pay it and you've won.
 - **Delivery streak.** Every on-time drop in a row adds +4% to the pay of every drop
   (x2.0 at 25). A late parcel or "nobody home" breaks it. Streak tiers pop on screen and
   the floating pay numbers grow hotter as it climbs.
@@ -128,6 +140,22 @@ Auto-dispatch is in RULES for when you'd rather not plan every trip.
 Corner Pantry (start) · Sunrise Bakery · Oak & Iron (furniture, needs a box truck)
 · Bloom & Co. · Byte Electronics · Pharma Plus. Better vendors pack faster and pay more.
 
+## Music and sound
+
+Four original looping tracks and 22 sound effects, all synthesized from scratch by
+`tools/make_audio.py` (numpy + ffmpeg) and committed as OGG files in `audio/`:
+
+| Track | Plays |
+|---|---|
+| *Maple St. at Dawn* | title screen and run summary |
+| *Dispatch Desk* | morning briefing and evening |
+| *Out for Delivery* | regular days |
+| *Holiday Peak* | boss days and day 12 |
+
+Every on-time drop rings a bell that climbs a pentatonic scale as your streak grows; clean
+runs ring the till, big ones hit the jackpot, busts go "wah-wah". Music and effect volumes
+are in Settings. To change or regenerate the audio: `python3 tools/make_audio.py`.
+
 ## Title screen and saves
 
 The game opens on a title screen: **Continue** (most recent save), **New season**,
@@ -185,6 +213,8 @@ scripts/
     combos.gd           Route hands: combo detection and multipliers
     abilities.gd        Dispatcher powers and hustle tuning
     events.gd           Morning dilemmas
+    bosses.gd           Boss clients for rent days
+  audio/                GameAudio: music crossfades and sound effects (game_audio.gd)
     profile.gd          Persistent meta-progression: reputation, HQ upgrades, goals, daily streak
     parcel.gd, driver.gd, traits.gd, company.gd, rival_ai.gd
   view/                 3D town built from primitives (world_view.gd), camera, palette
@@ -197,6 +227,7 @@ tools/
   sim_test.gd           Headless 4-day run with a scripted player + determinism check
   save_test.gd          Save mid-game, load, run both forward and check they match
   season_test.gd        Plays whole seasons at several heats, prints every rent bill, checks determinism
+  make_audio.py         Synthesizes the soundtrack and sound effects into audio/
   screenshot.gd         Renders a PNG (modes: title, picker, settings, briefing, play, route, report, rain)
 ```
 

@@ -12,6 +12,20 @@ static func act(sim: Sim, i: int) -> void:
 		sim.submit({"type": "pick_contract", "company": 0, "index": 1})
 		sim.apply_commands_now()
 		return
+	if sim.phase == Sim.Phase.EVENING and sim.evening_stage == "plan":
+		sim.submit({"type": "pick_day", "company": 0, "index": i % sim.day_options.size()})
+		sim.apply_commands_now()
+		return
+	if sim.phase == Sim.Phase.EVENING and sim.evening_stage == "shop":
+		# buy the first company perk we can afford while keeping rent money, then leave
+		for k in sim.shop.size():
+			var item: Dictionary = sim.shop[k]
+			if not item["sold"] and not Cards.is_vehicle(item["id"]) and p.money - item["price"] > sim.lease_amount():
+				sim.submit({"type": "shop_buy", "company": 0, "index": k})
+				break
+		sim.submit({"type": "shop_leave", "company": 0})
+		sim.apply_commands_now()
+		return
 	if sim.phase == Sim.Phase.EVENING:
 		var vid: int = p.vans[0].id if not p.vans.is_empty() else -1
 		# install vehicle cards on the van with the fewest mods

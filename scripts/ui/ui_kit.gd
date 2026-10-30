@@ -209,6 +209,7 @@ static func button(text: String, kind := "paper", size := 15) -> Button:
 	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	b.focus_mode = Control.FOCUS_NONE
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	b.pressed.connect(func(): GameAudio.sfx("click", randf_range(0.96, 1.04), -8.0))
 	return b
 
 

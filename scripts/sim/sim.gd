@@ -74,7 +74,7 @@ var week_twist := ""             # the twist waiting on this week's due day
 var streak := 0                  # on-time deliveries in a row (player)
 var lease_strikes := 0
 var lease_debt := 0.0
-var run_stats := {"best_streak": 0, "leases_paid": 0, "max_fleet": 0, "best_day": 0, "three_star_days": 0, "best_combo": 0.0, "combo_cash": 0.0}
+var run_stats := {"best_streak": 0, "leases_paid": 0, "max_fleet": 0, "best_day": 0, "three_star_days": 0, "best_combo": 0.0, "combo_cash": 0.0, "bosses_beaten": 0}
 var run_result := {}
 
 # Dispatcher layer: hustle powers and morning events
@@ -83,6 +83,18 @@ var call_ahead_left := 0
 var green_wave_until := -1.0
 var demand_boost := 1.0          # today's walk-in demand multiplier from events
 var morning_event := {}          # {"id", "done", "result"}
+
+# Day plan, boss clients, shop
+var today_type := "normal"       # Season.DAY_TYPES id
+var tomorrow_type := ""
+var day_options: Array = []      # tomorrow's choices while planning
+var week_boss := ""              # Bosses id for this week's rent day
+var evening_stage := ""          # "draft", "relic", "shop", "plan"
+var shop: Array = []             # [{"id": StringName, "price": float, "sold": bool}]
+var shop_rerolls := 0
+const SHOP_REROLL := 25.0
+const SHOP_TUNEUP_PER_VAN := 30.0
+const SHOP_HUSTLE := 40.0
 
 
 func setup(p_seed: int, start_fleet: Array, p_run := {}) -> void:
@@ -244,8 +256,9 @@ func _process_commands() -> void:
 			"buy_van":
 				var t: StringName = cmd.get("vehicle", &"van")
 				var spec: Dictionary = VehicleTypes.DATA[t]
-				if c.money >= spec["cost"] and c.vans.size() < c.fleet_cap() and c.level >= spec["level"]:
-					c.money -= spec["cost"]
+				var price := van_price(c, t)
+				if c.money >= price and c.vans.size() < c.fleet_cap() and c.level >= spec["level"]:
+					c.money -= price
 					var v := _add_van(c, t)
 					v.condition = rng.randf_range(0.8, 0.95)
 					if c.is_ai:
@@ -358,17 +371,49 @@ func _process_commands() -> void:
 					phase = Phase.DAY
 					event.emit("day_begun", {})
 			"pick_card":
-				if phase == Phase.EVENING and c.id == PLAYER:
+				if phase == Phase.EVENING and c.id == PLAYER and evening_stage in ["draft", "relic"]:
 					var i: int = cmd["index"]
 					if i >= 0 and i < draft.size():
 						_apply_card(c, draft[i], cmd.get("van", -1))
-					_begin_night()
+					_after_draft()
 			"skip_card":
-				if phase == Phase.EVENING and c.id == PLAYER:
-					c.money += 40.0
-					_begin_night()
+				if phase == Phase.EVENING and c.id == PLAYER and evening_stage in ["draft", "relic"]:
+					c.money += 100.0 if evening_stage == "relic" else 40.0
+					_after_draft()
+			"shop_buy":
+				if phase == Phase.EVENING and c.id == PLAYER and evening_stage == "shop":
+					var i: int = cmd["index"]
+					if i >= 0 and i < shop.size() and not shop[i]["sold"] and c.money >= shop[i]["price"]:
+						var id: StringName = shop[i]["id"]
+						if Cards.is_vehicle(id) and _find_van(c, cmd.get("van", -1)) == null:
+							pass
+						else:
+							c.money -= shop[i]["price"]
+							shop[i]["sold"] = true
+							_apply_card(c, id, cmd.get("van", -1))
+							event.emit("shop_changed", {"bought": id})
+			"shop_service":
+				if phase == Phase.EVENING and c.id == PLAYER and evening_stage == "shop":
+					_shop_service(c, cmd["service"])
+			"shop_reroll":
+				if phase == Phase.EVENING and c.id == PLAYER and evening_stage == "shop":
+					var cost := shop_reroll_cost()
+					if c.money >= cost:
+						c.money -= cost
+						shop_rerolls += 1
+						_open_shop(c)
+						event.emit("shop_changed", {})
+			"shop_leave":
+				if phase == Phase.EVENING and c.id == PLAYER and evening_stage == "shop":
+					_after_draft()
+			"pick_day":
+				if phase == Phase.EVENING and c.id == PLAYER and evening_stage == "plan":
+					var i: int = cmd["index"]
+					if i >= 0 and i < day_options.size():
+						tomorrow_type = day_options[i]
+						_begin_night()
 			"reroll_draft":
-				if phase == Phase.EVENING and c.id == PLAYER:
+				if phase == Phase.EVENING and c.id == PLAYER and evening_stage == "draft":
 					var cost := reroll_cost()
 					if c.money >= cost:
 						c.money -= cost
@@ -432,6 +477,8 @@ func is_peak_day() -> bool:
 
 
 func reroll_cost() -> float:
+	if companies[PLAYER].has_perk_fx("free_reroll"):
+		return 0.0
 	if hq("dice") > 0 and draft_rerolls == 0:
 		return 0.0
 	return REROLL_COST * (draft_rerolls + 1 - mini(hq("dice"), 1))
@@ -460,7 +507,70 @@ func promise_mult() -> float:
 		m *= 0.85
 	if twist == "tight":
 		m *= 0.7
+	if boss_rule() == "rossi":
+		m *= 0.8
 	return m
+
+
+## Today's boss client rule ("" unless it's a boss day).
+func boss_rule() -> String:
+	return week_boss if today_type == "boss" else ""
+
+
+func van_price(c: Company, t: StringName) -> float:
+	var cost: float = VehicleTypes.DATA[t]["cost"]
+	if c.id == PLAYER and today_type == "market":
+		cost *= 0.8
+	return roundf(cost)
+
+
+func shop_reroll_cost() -> float:
+	return SHOP_REROLL * (shop_rerolls + 1)
+
+
+func _open_shop(p: Company) -> void:
+	shop = []
+	for id in Cards.roll(rng, 4, 1, p.perks, not p.vans.is_empty(), 0, true):
+		shop.append({"id": id, "price": Cards.price(id), "sold": false})
+
+
+func _shop_service(c: Company, service: String) -> void:
+	match service:
+		"tuneup":
+			var cost := SHOP_TUNEUP_PER_VAN * c.vans.size()
+			if c.money < cost:
+				return
+			c.money -= cost
+			for v in c.vans:
+				v.condition = maxf(v.condition, 1.0 if v.state in [Van.State.IDLE, Van.State.LOADING] else v.condition)
+			notice.emit("The whole fleet gets a tune-up", "good")
+		"hustle":
+			if c.money < SHOP_HUSTLE or hustle >= hustle_cap():
+				return
+			c.money -= SHOP_HUSTLE
+			hustle = hustle_cap()
+			notice.emit("Hustle topped up", "good")
+		_:
+			return
+	event.emit("shop_changed", {"service": service})
+
+
+## After the card (or relic, or shop): plan tomorrow, unless tomorrow is rent day.
+func _after_draft() -> void:
+	if not season_on():
+		_begin_night()
+		return
+	if (day() + 1) % Season.WEEK_DAYS == 0:
+		tomorrow_type = "boss"
+		_begin_night()
+		return
+	var pool: Array = Season.PLAN_POOL.duplicate()
+	day_options = []
+	while day_options.size() < 3 and not pool.is_empty():
+		day_options.append(pool.pop_at(rng.randi_range(0, pool.size() - 1)))
+	evening_stage = "plan"
+	draft = []
+	event.emit("plan_tomorrow", {})
 
 
 func streak_cap() -> int:
@@ -509,9 +619,10 @@ func _roll_twists() -> void:
 	var d := day()
 	if (d - 1) % Season.WEEK_DAYS == 0:
 		week_twist = Season.TWIST_ORDER[rng.randi_range(0, Season.TWIST_ORDER.size() - 1)]
-	if d % Season.WEEK_DAYS == 0:
+		week_boss = Bosses.ORDER[rng.randi_range(0, Bosses.ORDER.size() - 1)]
+	if d % Season.WEEK_DAYS == 2:
 		twist = week_twist
-	elif heat() >= 5 and d % Season.WEEK_DAYS == 2:
+	elif heat() >= 5 and d % Season.WEEK_DAYS == 0:
 		var pool: Array = Season.TWIST_ORDER.filter(func(t): return t != week_twist)
 		twist = pool[rng.randi_range(0, pool.size() - 1)]
 
@@ -626,6 +737,7 @@ func _begin_morning(first := false) -> void:
 	_roll_twists()
 	demand_boost = 1.0
 	green_wave_until = -1.0
+	_start_day_type(p)
 	_roll_event()
 	_gain_hustle(int(p.perk_add("hustle_morning")))
 	event.emit("morning", {})
@@ -677,7 +789,21 @@ func _begin_evening() -> void:
 		report["run_end"] = "won" if lease.get("won", false) else "evicted"
 		_end_run(lease.get("won", false))
 		return
-	_roll_draft(p, report["draft_count"], report["boost"], report["min_rarity"])
+	report["today_type"] = today_type
+	if season_on() and today_type == "boss" and done:
+		run_stats["bosses_beaten"] = int(run_stats.get("bosses_beaten", 0)) + 1
+		draft = Cards.roll_relics(rng, 2, p.perks)
+		evening_stage = "relic" if not draft.is_empty() else "draft"
+		if draft.is_empty():
+			_roll_draft(p, report["draft_count"], report["boost"], report["min_rarity"])
+	elif season_on() and today_type == "market":
+		shop_rerolls = 0
+		_open_shop(p)
+		evening_stage = "shop"
+		draft = []
+	else:
+		evening_stage = "draft"
+		_roll_draft(p, report["draft_count"], report["boost"], report["min_rarity"])
 	event.emit("evening", report)
 
 
@@ -688,6 +814,9 @@ func _roll_draft(p: Company, n: int, boost: int, min_rarity: int) -> void:
 func _begin_night() -> void:
 	phase = Phase.NIGHT
 	draft = []
+	shop = []
+	day_options = []
+	evening_stage = ""
 	twist = ""
 	event.emit("night", {})
 
@@ -764,6 +893,8 @@ func _new_parcel(c: Company, house_id: int, now: float) -> Parcel:
 	p.district = city.houses[house_id]["district"]
 	p.created = now
 	p.set_stage(Parcel.Stage.PLACED, now)
+	if c.id == PLAYER and boss_rule() == "henderson":
+		p.signature = true
 	active.append(p)
 	c.sorting.append(p)
 	return p
@@ -792,8 +923,13 @@ func _spawn_walk_in(now: float) -> void:
 	var cid := PLAYER if rng.randf() < share[d] * (0.6 if twist == "blitz" else 1.0) else RIVAL
 	var c := companies[cid]
 	var p := _new_parcel(c, hid, now)
-	p.kind = Parcel.Kind.EXPRESS if rng.randf() < (0.35 if twist == "viral" else 0.2) else Parcel.Kind.STANDARD
+	var express_odds := 0.35 if twist == "viral" else 0.2
+	if cid == PLAYER and boss_rule() == "techcorp":
+		express_odds = 0.5
+	p.kind = Parcel.Kind.EXPRESS if rng.randf() < express_odds else Parcel.Kind.STANDARD
 	p.weight = snappedf(rng.randf_range(0.5, 8.0), 0.1)
+	if cid == PLAYER and boss_rule() == "bulkbarn":
+		p.weight *= 3.0
 	p.pay_amount = 18.0 if p.kind == Parcel.Kind.EXPRESS else 11.0
 	var promise := 75.0 if p.kind == Parcel.Kind.EXPRESS else 180.0
 	if cid == PLAYER:
@@ -970,6 +1106,10 @@ func _mood(v: Van, delta: float) -> void:
 	if delta < 0.0 and twist == "heatwave" and v.company == PLAYER:
 		delta *= 2.0
 	v.driver.change_mood(delta)
+	if delta < 0.0 and v.company == PLAYER:
+		var floor_at := companies[PLAYER].perk_add("mood_floor")
+		if floor_at > 0.0 and v.driver.mood < floor_at:
+			v.driver.mood = floor_at
 
 
 func _step_van(c: Company, v: Van, now: float) -> void:
@@ -1018,6 +1158,8 @@ func _step_van(c: Company, v: Van, now: float) -> void:
 				v.state = Van.State.DELIVERING
 				var p := v.cargo[0]
 				v.timer = Van.STOP_MINUTES * v.spec()["stop"] * v.fx("stop") * v.driver.stop_mult(p.district) * (1.6 if p.signature else 1.0)
+				if c.id == PLAYER and v.cargo.size() == v.route_total and c.has_perk_fx("first_stop_free"):
+					v.timer = 0.05
 		Van.State.DELIVERING:
 			v.timer -= MIN_PER_TICK
 			if v.timer <= 0.0:
@@ -1088,7 +1230,7 @@ func _van_speed(v: Van) -> float:
 	var gps := v.fx("gps") if v.route_total >= 5 else 1.0
 	var boost := Abilities.FLOOR_IT_MULT if minutes() < v.boost_until else 1.0
 	return Van.BASE_SPEED * v.spec()["speed"] * v.fx("speed") * gps * v.driver.speed_mult(minute_of_day()) \
-		* cond_mult * traffic_for(v.company) * boost
+		* cond_mult * traffic_for(v.company) * boost * companies[v.company].perk("fleet_speed")
 
 
 ## Traffic as one company sees it (Green Wave lifts it for the player).
@@ -1157,9 +1299,39 @@ func _gain_hustle(amount: int) -> void:
 
 
 ## Morning dilemma from Events. Effects that roll dice use sim.rng.
+func _start_day_type(p: Company) -> void:
+	today_type = tomorrow_type if tomorrow_type != "" else "normal"
+	tomorrow_type = ""
+	if not season_on():
+		today_type = "normal"
+		return
+	if day() % Season.WEEK_DAYS == 0:
+		today_type = "boss"
+	match today_type:
+		"boss":
+			contract_offers = [Bosses.make(rng, week_boss, day(), maxi(1, p.vans.size()))]
+		"rush":
+			demand_boost = 1.5
+		"quiet":
+			demand_boost = 0.6
+			for v in p.vans:
+				v.condition = minf(1.0, v.condition + 0.15)
+				v.driver.change_mood(10.0)
+		"mystery":
+			var picks := Cards.roll(rng, 1, 0, p.perks, not p.vans.is_empty(), 0, true)
+			if not picks.is_empty():
+				var target := p.vans[0]
+				for v in p.vans:
+					if v.mods.size() < target.mods.size():
+						target = v
+				_apply_card(p, picks[0], target.id)
+
+
 func _roll_event() -> void:
 	morning_event = {}
-	if not season_on() or day() < 2:
+	if not season_on() or day() < 2 or today_type == "boss":
+		return
+	if today_type != "mystery" and rng.randf() > 0.35:
 		return
 	var id: String = Events.ORDER[rng.randi_range(0, Events.ORDER.size() - 1)]
 	morning_event = {"id": id, "done": false, "result": ""}
@@ -1368,17 +1540,26 @@ func _deliver(c: Company, v: Van, p: Parcel, now: float) -> void:
 	var base := p.pay()
 	if p.kind == Parcel.Kind.EXPRESS:
 		base *= v.fx("express_pay")
+	if c.id == PLAYER and today_type == "rush":
+		base *= 1.25
 	var pay := base * (0.3 if p.late else 1.0)
 	if c.id == PLAYER:
 		if p.late:
 			v.route_clean = false
 			_break_streak(c, "late")
+			if boss_rule() == "mayor":
+				pay = 0.0
 			if twist == "inspector":
 				pay = -10.0
+			if boss_rule() == "streamqueen":
+				pay = -15.0
 		else:
 			v.route_base += pay
-			_gain_hustle(1)
+			_gain_hustle(1 + int(c.perk_add("hustle_per_drop")))
 			pay = pay * streak_mult() + _bump_streak(c)
+			if c.has_perk_fx("golden_ticket") and (c.ontime_total + 1) % 10 == 0:
+				pay += 40.0
+				notice.emit("Golden ticket! +$40", "streak")
 	c.money += pay
 	c.revenue_today += pay
 	c.lifetime_revenue += pay
@@ -1443,7 +1624,8 @@ func _check_level(c: Company) -> void:
 ## status: "ok", "late", or "early" (nobody home yet).
 func estimate_route(v: Van, order: Array, start_node: int, start_time: float) -> Dictionary:
 	var spd: float = Van.BASE_SPEED * v.spec()["speed"] * v.fx("speed") * (v.fx("gps") if order.size() >= 5 else 1.0) \
-		* v.driver.speed_mult(fmod(start_time, 1440.0)) * (0.85 + 0.15 * v.condition) * traffic_for(v.company)
+		* v.driver.speed_mult(fmod(start_time, 1440.0)) * (0.85 + 0.15 * v.condition) * traffic_for(v.company) \
+		* companies[v.company].perk("fleet_speed")
 	var t := start_time
 	var at := start_node
 	var stops: Array = []
@@ -1574,7 +1756,7 @@ func garage_position(v: Van) -> int:
 
 func _pay_costs(c: Company) -> void:
 	for v in c.vans:
-		var wage := Van.WAGE_PER_MIN * (0.25 if v.state in [Van.State.IDLE, Van.State.AT_SHOP] else 1.0)
+		var wage := Van.WAGE_PER_MIN * (0.25 if v.state in [Van.State.IDLE, Van.State.AT_SHOP] else 1.0) * c.perk("wage")
 		c.money -= wage * MIN_PER_TICK
 		if v.state != Van.State.TOWING:
 			c.money -= v.pos.distance_to(v.prev_pos) * Van.FUEL_PER_UNIT * v.spec()["fuel"] * v.fx("fuel") * c.perk("fuel")

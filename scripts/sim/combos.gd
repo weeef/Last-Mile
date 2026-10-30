@@ -70,6 +70,7 @@ static func evaluate(city: City, cargo: Array, v: Van, c: Company) -> Dictionary
 	var all_bonus := c.perk_add("combo_all")
 	if all_bonus > 0.0:
 		mult += all_bonus
+	mult = 1.0 + (mult - 1.0) * c.perk("combo_scale")   # Double-Decker relic
 	return {"mult": mult, "hits": hits}
 
 

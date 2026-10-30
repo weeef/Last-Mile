@@ -1246,12 +1246,12 @@ func _refresh_buy() -> void:
 		elif p.vans.size() >= p.fleet_cap():
 			b.disabled = true
 			b.text = "FLEET FULL"
-		elif p.money < spec["cost"]:
+		elif p.money < sim.van_price(p, t):
 			b.disabled = true
-			b.text = "NEED %s" % UIKit.money(spec["cost"])
+			b.text = "NEED %s" % UIKit.money(sim.van_price(p, t))
 		else:
 			b.disabled = false
-			b.text = "BUY"
+			b.text = "BUY %s" % UIKit.money(sim.van_price(p, t)) if sim.van_price(p, t) < spec["cost"] else "BUY"
 
 
 # ------------------------------------------------------------- rules page
@@ -1444,12 +1444,16 @@ func refresh(speed: int, cam: Camera3D, world: WorldView) -> void:
 		_level_bar.value = (p.lifetime_revenue - li["revenue"]) / (nxt["revenue"] - li["revenue"])
 		_level_sub.text = "%s / %s earned" % [UIKit.money(p.lifetime_revenue), UIKit.money(nxt["revenue"])]
 	var day_txt := "DAY %d/%d" % [sim.day(), Season.DAYS] if sim.season_on() else "DAY %d" % sim.day()
+	if sim.season_on() and sim.today_type != "normal":
+		day_txt += " · " + String(Season.DAY_TYPES[sim.today_type]["name"]).to_upper()
 	_day.text = "%s · %s%s" % [day_txt, String(Sim.WEATHER[sim.weather]).to_upper(), "  ·  PAUSED" if speed == 0 else ""]
 	var conds: Array = []
 	if sim.is_peak_day():
 		conds.append("HOLIDAY PEAK: DOUBLE DEMAND")
 	if sim.twist != "":
 		conds.append(Season.twist_name(sim.twist).to_upper())
+	if sim.boss_rule() != "":
+		conds.append("BOSS: " + String(Bosses.get_boss(sim.boss_rule())["client"]).to_upper())
 	if sim.is_rush_hour():
 		conds.append("RUSH HOUR: traffic slow")
 	if not sim.city.closures.is_empty():
