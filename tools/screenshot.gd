@@ -1,0 +1,53 @@
+extends SceneTree
+## Renders the game and saves a PNG.
+## Usage: -s tools/screenshot.gd -- out.png <mode> <ticks>
+##   mode: picker | tutorial | play | night
+var main: Node
+var frame := 0
+var out := "shot.png"
+var mode := "play"
+var ticks := 1800
+
+func _init() -> void:
+	var args := OS.get_cmdline_user_args()
+	if args.size() > 0: out = args[0]
+	if args.size() > 1: mode = args[1]
+	if args.size() > 2: ticks = int(args[2])
+	main = load("res://scenes/main.tscn").instantiate()
+	root.add_child(main)
+
+func _picker() -> Node:
+	for c in main.layer.get_children():
+		if c is StartScreen: return c
+	return null
+
+func _process(_d: float) -> bool:
+	frame += 1
+	if frame == 3 and mode != "picker":
+		var pk = _picker()
+		pk.picks = [&"van", &"box"]
+		main._on_fleet_chosen([&"van", &"box"], mode == "tutorial", pk)
+		main.set_speed(0)
+	if frame == 5 and mode != "picker":
+		var sim: Sim = main.sim
+		var p := sim.player()
+		for i in ticks:
+			if i % 40 == 0 and mode != "tutorial":
+				if p.active_jobs().size() < 1 and p.backlog() < 10:
+					for j in p.offers():
+						if not j.needs_liftgate() or true:
+							sim.submit({"type": "accept_job", "company": 0, "job": j.id}); break
+				for v in p.vans:
+					if v.ready: sim.submit({"type": "start_route", "company": 0, "van": v.id})
+					if v.state == Van.State.IDLE and v.condition < 0.45:
+						sim.submit({"type": "service_van", "company": 0, "van": v.id})
+			sim.step()
+		if mode == "play":
+			for v in p.vans:
+				if v.on_road():
+					main.select_van(v); break
+	if frame == 90:
+		root.get_viewport().get_texture().get_image().save_png(out)
+		print("saved ", out)
+		quit()
+	return false
