@@ -1,7 +1,8 @@
 extends SceneTree
 ## Renders the game and saves a PNG.
 ## Usage: -s tools/screenshot.gd -- out.png <mode> <ticks>
-##   mode: title | picker | hq | settings | briefing | play | route | report | rain | wide | help | tooltip
+##   mode: title | picker | hq | settings | briefing | play | route | report | rain | wide | help | tooltip | listen
+##   listen: plays a few seconds at 2x zoomed in on a van (use with --write-movie to record audio)
 var main: Node
 var frame := 0
 var out := "shot.png"
@@ -58,13 +59,22 @@ func _process(_d: float) -> bool:
 			for v in sim.player().vans:
 				if v.on_road():
 					main.select_van(v); break
+	if frame == 6 and mode == "listen":
+		var sim: Sim = main.sim
+		main._set_overlay(null)
+		for v in sim.player().vans:
+			if v.on_road():
+				main.select_van(v)
+				main.cam.zoom(0.3)
+				break
+		main.set_speed(2)
 	if frame == 20 and mode == "help":
 		main.open_help()
 	if frame == 20 and mode == "tooltip":
 		# Hover the cash panel so its money breakdown tooltip shows.
 		var vp := root.get_viewport()
 		vp.warp_mouse(Vector2(vp.get_visible_rect().size.x - 90, 50))
-	if frame == 100:
+	if frame == 100 and mode != "listen" or frame == 360:
 		root.get_viewport().get_texture().get_image().save_png(out)
 		print("saved ", out)
 		quit()

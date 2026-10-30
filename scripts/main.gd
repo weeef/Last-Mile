@@ -245,6 +245,10 @@ func _event_sound(n: String, d: Dictionary) -> void:
 			GameAudio.music("peak" if sim.today_type == "boss" or sim.is_peak_day() else "day")
 		"evening":
 			GameAudio.music("desk")
+			var ultra := false
+			for id in sim.draft:
+				ultra = ultra or Cards.get_card(id)["rarity"] >= Cards.Rarity.ULTRA
+			GameAudio.sfx("ultra" if ultra else "reveal")
 			var lease: Dictionary = d.get("lease", {})
 			if lease.get("paid", false):
 				GameAudio.sfx("rent_paid")
@@ -266,6 +270,12 @@ func _event_sound(n: String, d: Dictionary) -> void:
 		"breakdown":
 			if d["van"].company == Sim.PLAYER:
 				GameAudio.sfx("breakdown")
+		"tow":
+			if d["van"].company == Sim.PLAYER:
+				GameAudio.sfx("tow", 1.0, -3.0)
+		"not_home":
+			if d["van"].company == Sim.PLAYER:
+				GameAudio.sfx("doorbell", 1.0, -6.0)
 		"rush_order":
 			GameAudio.sfx("rush", 1.0, -3.0)
 		"ability":
@@ -278,10 +288,13 @@ func _event_sound(n: String, d: Dictionary) -> void:
 		"event_resolved":
 			GameAudio.sfx("stamp")
 		"card_applied":
-			GameAudio.sfx("relic" if Cards.get_card(d["card"])["rarity"] == Cards.Rarity.RELIC else "card")
+			var rar: int = Cards.get_card(d["card"])["rarity"]
+			GameAudio.sfx("relic" if rar == Cards.Rarity.RELIC else ("ultra" if rar == Cards.Rarity.ULTRA else "confirm"))
+		"draft_rerolled":
+			GameAudio.sfx("reveal")
 		"shop_changed":
 			GameAudio.sfx("coin")
-		"plan_tomorrow", "draft_rerolled":
+		"plan_tomorrow":
 			GameAudio.sfx("card")
 
 
@@ -348,6 +361,7 @@ func _process(delta: float) -> void:
 		if n >= 400 or not sim.clock_running():
 			_acc = 0.0
 	world.sync(_acc if speed > 0 else 1.0, delta, speed > 0)
+	_update_ambience()
 	if hud.visible:
 		hud.refresh(speed, cam.camera, world)
 
@@ -431,6 +445,21 @@ func open_help() -> void:
 			set_speed(resume))
 
 
+## Town ambience follows the clock and weather; engines hum when the camera is close.
+func _update_ambience() -> void:
+	var h := sim.minute_of_day() / 60.0
+	var night := h < 6.0 or h >= 20.5
+	GameAudio.ambience(night, sim.weather == 1)
+	var level := 0.0
+	if started and speed > 0:
+		var cp := cam.camera.global_position
+		for v in sim.player().vans:
+			if v.on_road() or v.state == Van.State.RESCUE:
+				var d := cp.distance_to(world.van_render_pos(v))
+				level = maxf(level, clampf(1.0 - (d - 10.0) / 45.0, 0.0, 1.0))
+	GameAudio.engine(level)
+
+
 ## First-time tips for sim events.
 func _event_hint(n: String, d: Dictionary) -> void:
 	match n:
@@ -478,7 +507,7 @@ func apply_settings() -> void:
 	if hud:
 		hud.show_fps = settings.show_fps == 1
 	if audio:
-		audio.set_volumes(settings.music_volume / 10.0, settings.sfx_volume / 10.0)
+		audio.set_volumes(settings.master_volume / 10.0, settings.music_volume / 10.0, settings.sfx_volume / 10.0, settings.ambience_volume / 10.0)
 
 
 func open_settings() -> void:

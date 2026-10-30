@@ -439,8 +439,8 @@ def track_day():
 
 
 def track_peak():
-    """'Holiday Peak': driving A minor at 132 bpm. Boss and peak days."""
-    s = Song(132, 16)
+    """'Holiday Peak': a busier A minor at 120 bpm for boss and peak days (kept warm, not harsh)."""
+    s = Song(120, 16)
     prog = [("A", "min"), ("F", "maj"), ("C", "maj"), ("G", "maj")] * 2 + [("D", "min"), ("F", "maj"), ("E", "min"), ("E", "7")] + [("A", "min"), ("F", "maj"), ("G", "maj"), ("E", "7")]
     for bar in range(16):
         root, q = prog[bar]
@@ -450,14 +450,14 @@ def track_peak():
             n = arp[[0, 1, 2, 3, 2, 1, 4, 2][k % 8] % len(arp)]
             t = tvec(s.beat * 0.24)
             sig = saw(hz(n), t, 10) * adsr(len(t), 0.002, 0.08, 0.3, 0.02) * (0.35 if k % 4 == 0 else 0.25)
-            s.add("arp", s.at(bar, k * 0.25), fft_filter(sig, hi=2600 + 1400 * (bar % 4) / 3, circular=False))
+            s.add("arp", s.at(bar, k * 0.25), fft_filter(sig, hi=1500 + 700 * (bar % 4) / 3, circular=False))
         for e in range(8):
             s.add("bass", s.at(bar, e * 0.5 + 0.0), bass(hz(m(root, 1) + 12), s.beat * 0.42, 0.7, growl=0.6))
         for k in range(4):
             s.add("drums", s.at(bar, k), kick(1.0, 1.2))
-            s.add("drums", s.at(bar, k + 0.5), hat(0.15, seed=k + bar, open_=True))
+            s.add("drums", s.at(bar, k + 0.5), hat(0.09, seed=k + bar, open_=True))
         for k in (1, 3):
-            s.add("drums", s.at(bar, k), clap(0.6, seed=bar + k))
+            s.add("drums", s.at(bar, k), clap(0.4, seed=bar + k))
         for k in range(16):
             if k % 2:
                 s.add("drums", s.at(bar, k * 0.25), hat(0.12, seed=k * 3))
@@ -600,6 +600,129 @@ def sfx_all():
     return out
 
 
+# ----------------------------------------------------------------- ambience (seamless loops)
+
+def _loop_noise(n, seed, lo, hi):
+    return fft_filter(np.random.default_rng(seed).standard_normal(n), lo=lo, hi=hi)
+
+
+def _slow_lfo(n, cycles, depth, phase=0.0):
+    t = np.arange(n) / n
+    return 1.0 - depth + depth * (0.5 + 0.5 * np.sin(TAU * cycles * t + phase))
+
+
+def amb_day():
+    """Distant traffic, a soft breeze and birds. 40 s loop."""
+    s = Song(60, 10)
+    n = s.n
+    rng = np.random.default_rng(31)
+    traffic = _loop_noise(n, 1, 40, 320) * _slow_lfo(n, 3, 0.35) * 0.9
+    wind = _loop_noise(n, 2, 300, 1800) * _slow_lfo(n, 2, 0.7, 1.0) * 0.25
+    s.tracks["bed"] = traffic + wind
+    for _ in range(26):
+        when = rng.uniform(0, n / SR)
+        f0 = rng.uniform(2600, 4200)
+        for k in range(rng.integers(2, 6)):
+            d = rng.uniform(0.05, 0.11)
+            tt = tvec(d)
+            sweep = f0 * (1 + rng.uniform(-0.18, 0.25) * tt / d)
+            chirp = np.sin(TAU * np.cumsum(sweep) / SR) * np.sin(np.pi * tt / d) ** 2
+            s.add("birds", when + k * rng.uniform(0.09, 0.16), chirp * rng.uniform(0.05, 0.12))
+    for _ in range(4):   # a car passing in the distance
+        when = rng.uniform(0, n / SR)
+        d = 3.5
+        swell = _loop_noise(int(d * SR), rng.integers(100), 80, 900) * np.sin(np.pi * tvec(d) / d) ** 2
+        s.add("bed", when, swell * 0.6)
+    mix = s.get("bed") + s.get("birds")
+    return mix / np.max(np.abs(mix)) * 0.55
+
+
+def amb_night():
+    """Crickets, a light breeze, the odd owl. 40 s loop."""
+    s = Song(60, 10)
+    n = s.n
+    rng = np.random.default_rng(41)
+    wind = _loop_noise(n, 3, 120, 900) * _slow_lfo(n, 2, 0.6) * 0.3
+    s.tracks["bed"] = wind
+    for voice in range(3):
+        f = rng.uniform(4300, 5200)
+        rate = rng.uniform(2.2, 3.4)          # chirps per second
+        t = 0.0
+        while t < n / SR:
+            if rng.uniform() < 0.82:
+                d = 0.16
+                tt = tvec(d)
+                pulse = np.sin(TAU * f * tt) * (0.5 + 0.5 * np.sign(np.sin(TAU * 38 * tt))) * np.sin(np.pi * tt / d) ** 2
+                s.add("crickets", t, pulse * (0.035 + 0.02 * voice))
+            t += 1.0 / rate
+    for _ in range(2):
+        when = rng.uniform(0, n / SR)
+        for k, d in enumerate([0.32, 0.5]):
+            tt = tvec(d)
+            hoot = np.sin(TAU * 390 * tt * (1 + 0.01 * np.sin(TAU * 5 * tt))) * np.sin(np.pi * tt / d)
+            s.add("owl", when + k * 0.45, hoot * 0.07)
+    mix = s.get("bed") + fft_filter(s.get("crickets"), lo=3000, hi=7000) + s.get("owl")
+    return mix / np.max(np.abs(mix)) * 0.5
+
+
+def amb_rain():
+    """Steady rain with soft drips on rooftops. 30 s loop."""
+    s = Song(60, 8)
+    n = s.n
+    rng = np.random.default_rng(51)
+    hiss = _loop_noise(n, 5, 400, 3800) * _slow_lfo(n, 3, 0.2) * 0.55
+    body = _loop_noise(n, 6, 90, 600) * 0.5
+    s.tracks["bed"] = hiss + body
+    for _ in range(int(n / SR * 9)):
+        when = rng.uniform(0, n / SR)
+        d = 0.03
+        drop = np.sin(TAU * rng.uniform(900, 2200) * tvec(d)) * np.exp(-tvec(d) * 120)
+        s.add("drops", when, drop * rng.uniform(0.04, 0.12))
+    mix = s.get("bed") + s.get("drops")
+    return mix / np.max(np.abs(mix)) * 0.55
+
+
+def engine_loop():
+    """A soft diesel idle hum, exactly periodic over 2 s so it loops cleanly."""
+    n = 2 * SR
+    t = np.arange(n) / SR
+    f = 45.0                                   # 90 whole cycles in 2 s
+    ph = TAU * f * t
+    tone = sum((1.0 / k) * np.sin(k * ph) for k in range(1, 9))
+    chug = 0.75 + 0.25 * np.sin(TAU * 8.0 * t)   # 16 whole cycles
+    rumble = _loop_noise(n, 7, 40, 400) * 0.35
+    x = fft_filter(tone * chug + rumble, lo=30, hi=700)
+    return x / np.max(np.abs(x)) * 0.7
+
+
+def sfx_extra():
+    out = {}
+    t = tvec
+    # Tow truck: reverse beeper, chain rattle, low engine.
+    beeps = [(i * 0.36, np.sin(TAU * 1046 * t(0.18)) * adsr(int(0.18 * SR), 0.005, 0.02, 0.9, 0.03) * 0.35) for i in range(3)]
+    chain = [(0.15 + i * 0.07, fft_filter(noise(0.05, 60 + i), lo=2500, hi=7000, circular=False) * np.exp(-t(0.05) * 60) * 0.5) for i in range(8)]
+    out["tow"] = seq(beeps + chain + [(0, engine_loop()[:int(1.2 * SR)] * np.linspace(0.6, 0, int(1.2 * SR)))])
+    # Card reveal: a paper flick and a soft pluck.
+    out["reveal"] = seq([(0, sweep_noise(0.18, 1200, 4500, seed=61) * adsr(int(0.18 * SR), 0.02, 0.08, 0.5, 0.06) * 0.9),
+                         (0.08, pluck(hz(m("A", 5)), 0.5, 0.35, bright=0.8))])
+    # Ultra rare sting: warm chord swell under a rising bell run.
+    run = [m("D", 5), m("A", 5), m("D", 6), m("F#", 6), m("A", 6)]
+    out["ultra"] = seq([(i * 0.07, bell(hz(n), 1.6, 0.28)) for i, n in enumerate(run)] +
+                       [(0.1, sum(pad([hz(n)], 1.8, 0.7) for n in [m("D", 4), m("F#", 4), m("A", 4)]))])
+    # Confirm: two soft rising notes.
+    out["confirm"] = seq([(0, pluck(hz(m("E", 5)), 0.3, 0.4, bright=0.9)), (0.07, pluck(hz(m("B", 5)), 0.45, 0.4, bright=0.9))])
+    # Nobody home: a doorbell that goes unanswered.
+    out["doorbell"] = seq([(0, bell(hz(m("E", 5)), 0.6, 0.35)), (0.28, bell(hz(m("C", 5)), 0.9, 0.3))])
+    ir = reverb_ir(0.5, 98)
+    for k in list(out.keys()):
+        x = out[k]
+        wet = np.convolve(x, ir)[:len(x) + int(0.25 * SR)]
+        x = np.concatenate([x, np.zeros(len(wet) - len(x))]) + wet * 0.15
+        x = fft_filter(x, lo=40, hi=9000, circular=False)
+        out[k] = fade(x / (np.max(np.abs(x)) + 1e-9) * 0.8)
+    return out
+
+
 # ----------------------------------------------------------------- output
 
 def write_ogg(path, data, quality=4):
@@ -625,7 +748,12 @@ def main():
         data = fn()
         write_ogg(os.path.join(ROOT, "music", name + ".ogg"), data, 4)
         print("music/%s.ogg  %.1fs" % (name, len(data) / SR))
+    os.makedirs(os.path.join(ROOT, "ambience"), exist_ok=True)
+    for name, fn in [("day", amb_day), ("night", amb_night), ("rain", amb_rain), ("engine", engine_loop)]:
+        write_ogg(os.path.join(ROOT, "ambience", name + ".ogg"), fn(), 3)
+        print("ambience/%s.ogg" % name)
     effects = sfx_all()
+    effects.update(sfx_extra())
     for name, data in effects.items():
         write_ogg(os.path.join(ROOT, "sfx", name + ".ogg"), data, 5)
     print("sfx: %d files" % len(effects))

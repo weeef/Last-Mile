@@ -1747,6 +1747,7 @@ func _start_tow(c: Company, v: Van, now: float) -> void:
 	p.append_array(city.path(closest, city.garage["node"]))
 	v.set_path(p)
 	v.state = Van.State.TOWING
+	event.emit("tow", {"van": v})
 
 
 func _send_to_shop(c: Company, v: Van) -> void:

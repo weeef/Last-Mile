@@ -35,8 +35,10 @@ var fog := 1
 var detail := 1
 var show_fps := 0
 # Audio (index into VOLUMES)
+var master_volume := 8
 var music_volume := 6
 var sfx_volume := 8
+var ambience_volume := 6
 var first_run := true
 
 
@@ -119,7 +121,7 @@ func save() -> void:
 
 func _keys() -> Array:
 	return ["window_mode", "resolution", "ui_scale", "vsync", "fps_limit", "preset", "render_scale",
-		"msaa", "shadows", "fog", "detail", "show_fps", "music_volume", "sfx_volume"]
+		"msaa", "shadows", "fog", "detail", "show_fps", "master_volume", "music_volume", "sfx_volume", "ambience_volume"]
 
 
 func resolution_label(i: int) -> String:
