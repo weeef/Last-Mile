@@ -58,6 +58,7 @@ var daily_streak := 0
 var daily_last := -1               # day number of the last daily run started
 var daily_best := {}               # day number -> best score
 var history: Array = []            # newest first: run result dictionaries
+var hints_seen := {}               # first-time tips already shown ("_off" = tips disabled)
 
 
 static func load_or_new() -> Profile:
@@ -74,7 +75,7 @@ static func load_or_new() -> Profile:
 	for k in ["rep", "rep_lifetime", "max_heat", "runs", "wins", "best_score", "best_streak", "best_day", "daily_streak", "daily_last"]:
 		if d.has(k):
 			p.set(k, int(d[k]))
-	for k in ["upgrades", "charters", "goals", "wins_by_charter", "daily_best"]:
+	for k in ["upgrades", "charters", "goals", "wins_by_charter", "daily_best", "hints_seen"]:
 		if d.has(k) and d[k] is Dictionary:
 			p.set(k, d[k])
 	if d.has("history") and d["history"] is Array:
@@ -86,7 +87,7 @@ static func load_or_new() -> Profile:
 func save() -> bool:
 	var d := {"version": VERSION}
 	for k in ["rep", "rep_lifetime", "max_heat", "runs", "wins", "best_score", "best_streak", "best_day", "daily_streak",
-			"daily_last", "upgrades", "charters", "goals", "wins_by_charter", "daily_best", "history"]:
+			"daily_last", "upgrades", "charters", "goals", "wins_by_charter", "daily_best", "history", "hints_seen"]:
 		d[k] = get(k)
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
 	if f == null:

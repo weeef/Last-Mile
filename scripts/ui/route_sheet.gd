@@ -16,6 +16,9 @@ var _tab_btns := {}
 var _list: VBoxContainer
 var _summary: Label
 var _hand_mult: Label
+var _cost: Label
+var _mods_note: Label
+var _sell: Button
 var _hand_hits: Label
 var _send: Button
 var _service: Button
@@ -51,7 +54,7 @@ func setup(p_sim: Sim, p_main: Node) -> void:
 	info.add_child(_load)
 	info.add_child(UIKit.spacer())
 	_auto_btn = UIKit.button("Auto-load on", "paper", 13)
-	_auto_btn.tooltip_text = "When on, this vehicle keeps loading parcels from the depot by itself."
+	UIKit.tip(_auto_btn, "Auto-load ON: this vehicle keeps filling itself from the depot, most urgent parcels first. It turns off by itself when you unload a parcel by hand, so your changes stick.")
 	_auto_btn.pressed.connect(func():
 		main.submit_player({"type": "set_auto_fill", "van": van.id, "value": not van.auto_fill}))
 	info.add_child(_auto_btn)
@@ -76,7 +79,7 @@ func setup(p_sim: Sim, p_main: Node) -> void:
 	v.add_child(UIKit.rule())
 	var hand := PanelContainer.new()
 	hand.add_theme_stylebox_override("panel", UIKit.flat(Palette.INK_2, 3, 10, 5))
-	hand.tooltip_text = "Your load is scored like a poker hand. Come back with zero late parcels and the route's on-time pay is paid again times (multiplier - 1)."
+	UIKit.tip(hand, "Your load is scored like a poker hand. Combos: Full Truck +0.3, Sweep (3+ stops, one district) +0.4, Neighbors (+0.05 per extra stop on the same street), Big Haul (8+) +0.2, Mega Haul (12+) +0.4, Express Run +0.3, Mixed Bag +0.25, Signed & Sealed (3+ signatures) +0.2. Bring the whole route back with zero late parcels and its on-time pay is paid again x (multiplier - 1). One late stop busts it.")
 	var hh := UIKit.hbox(8)
 	hand.add_child(hh)
 	var hand_v := UIKit.vbox(-3)
@@ -90,23 +93,36 @@ func setup(p_sim: Sim, p_main: Node) -> void:
 	_hand_hits.custom_minimum_size.x = 230
 	hh.add_child(_hand_hits)
 	v.add_child(hand)
+	_cost = UIKit.label("", 12, Palette.TEXT_SOFT)
+	_cost.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_cost.custom_minimum_size.x = 330
+	_cost.mouse_filter = Control.MOUSE_FILTER_PASS
+	v.add_child(_cost)
+	_mods_note = UIKit.label("", 12, Palette.BLUE, "bold")
+	_mods_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_mods_note.custom_minimum_size.x = 330
+	v.add_child(_mods_note)
 	_summary = UIKit.label("", 13, Palette.TEXT, "bold")
 	_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_summary.custom_minimum_size.x = 330
 	v.add_child(_summary)
 	var actions := UIKit.hbox(8)
 	_service = UIKit.button("Service $%d" % int(Sim.SERVICE_COST), "paper", 15)
-	_service.tooltip_text = "Drive to Gearbox Garage for a tune-up (about %d min once a bay is free)." % int(Sim.SERVICE_MIN)
+	UIKit.tip(_service, "Drive to Gearbox Garage for a $%d tune-up: back to 100%% condition after about %d min once one of the 2 bays is free. Cheaper than a breakdown (~$205 and hours off the road)." % [int(Sim.SERVICE_COST), int(Sim.SERVICE_MIN)])
 	_service.pressed.connect(func(): main.submit_player({"type": "service_van", "van": van.id}))
 	actions.add_child(_service)
 	var auto := UIKit.button("Auto order", "paper", 15)
-	auto.tooltip_text = "Nearest stop first, evening-only customers last. Fast, not always best."
+	UIKit.tip(auto, "Sorts the stops: nearest first, express a bit earlier, evening-only customers last. Fast, not always best.")
+	_sell = UIKit.button("Sell", "paper", 15)
+	_sell.pressed.connect(func(): main.submit_player({"type": "sell_van", "van": van.id}))
+	actions.add_child(_sell)
 	auto.pressed.connect(func(): main.submit_player({"type": "auto_order", "van": van.id}))
 	actions.add_child(auto)
-	_send = UIKit.button("Send it", "go", 17)
+	_send = UIKit.button("Send", "go", 17)
 	_send.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_send.custom_minimum_size.y = 36
 	_send.pressed.connect(func(): main.submit_player({"type": "start_route", "van": van.id}))
+	UIKit.tip(_send, "Send this vehicle out with the stops in this order.")
 	actions.add_child(_send)
 	v.add_child(actions)
 
@@ -187,6 +203,27 @@ func refresh() -> void:
 	if late > 0 and m > 1.0:
 		hint += "  ·  A late stop will bust this hand!"
 	_hand_hits.text = hint
+	var rc := sim.running_costs(van)
+	var trip_h := maxf(0.0, est["return"] - sim.minutes()) / 60.0 if not van.cargo.is_empty() else 0.0
+	_cost.text = "Costs %s on the road (%s wages + %s fuel), %s parked.%s" % [Explain.per_hour(rc["drive"]), Explain.per_hour(rc["wage_drive"]), Explain.per_hour(rc["fuel"]), Explain.per_hour(rc["wage_parked"]),
+		("  This trip: ~%s for %s." % [UIKit.money(rc["drive"] * trip_h), Explain._dur(trip_h * 60.0)]) if trip_h > 0.0 else ""]
+	UIKit.tip(_cost, Explain.costs(sim, van))
+	var notes: Array = []
+	if van.mods.has(&"route_gps"):
+		notes.append("Route GPS %s (+12%% speed needs 5+ stops, you have %d)" % ["ACTIVE" if van.cargo.size() >= 5 else "inactive", van.cargo.size()])
+	if van.mods.has(&"insulated"):
+		var ex := 0
+		for p in van.cargo:
+			if p.kind == Parcel.Kind.EXPRESS:
+				ex += 1
+		notes.append("Insulated Cargo: %d express parcel%s aboard pay +30%%" % [ex, "" if ex == 1 else "s"])
+	_mods_note.text = "\n".join(notes)
+	_mods_note.visible = not notes.is_empty()
+	var can_sell := van.state == Van.State.IDLE and van.cargo.is_empty() and sim.player().vans.size() > 1
+	_sell.visible = van.state in [Van.State.IDLE, Van.State.LOADING]
+	_sell.disabled = not can_sell
+	_sell.text = "Sell %s" % UIKit.money(VehicleTypes.DATA[van.type]["cost"] * 0.4)
+	UIKit.tip(_sell, ("Sell this %s for %s (40%% of its price). Its wages and fuel stop at once." % [van.spec()["name"], UIKit.money(VehicleTypes.DATA[van.type]["cost"] * 0.4)]) if can_sell else "Only a parked, empty vehicle can be sold, and you must keep at least one. Unload it and turn auto-load off first.")
 	_send.disabled = van.cargo.is_empty() or van.state != Van.State.LOADING
 	_service.visible = van.state == Van.State.IDLE
 	_service.text = "Service %d%%" % int(van.condition * 100)
@@ -208,6 +245,23 @@ func _rebuild() -> void:
 			_list.add_child(UIKit.label("Nothing waiting at the depot.", 13, Palette.TEXT_SOFT))
 		for p in waiting:
 			_list.add_child(_depot_row(p))
+
+
+func _parcel_tip(p: Parcel) -> String:
+	var lines: Array = ["%s · %s · %s · %.1fkg" % [p.code(), p.source_name(), p.kind_name(), p.weight],
+		"Due %s. Pays %s on time, 30%% if late." % [Sim.clock(p.deadline), UIKit.money(p.pay())]]
+	if p.window_start > 0.0:
+		lines.append("Nobody home before %s: arriving earlier sends it back to the depot." % Sim.clock(p.window_start))
+	if p.window_end > 0.0:
+		lines.append("Must arrive by %s." % Sim.clock(p.window_end))
+	if p.signature:
+		lines.append("Needs a signature: +$4, and the drop takes 60% longer.")
+	if p.heavy():
+		lines.append("Heavy: needs a liftgate.")
+	if p.attempts > 0:
+		lines.append("Nobody was home last time (%d attempt%s)." % [p.attempts, "" if p.attempts == 1 else "s"])
+	lines.append("%s: %s" % [City.DISTRICT_NAMES[p.district], "the driver knows it %d%%" % int(van.driver.familiarity[p.district] * 100)])
+	return "\n".join(lines)
 
 
 func _tags(p: Parcel) -> HBoxContainer:
@@ -251,6 +305,7 @@ func _stop_row(i: int, p: Parcel) -> Control:
 	v.add_child(line)
 	h.add_child(v)
 	_eta_labels[p.id] = eta
+	UIKit.tip(row, _parcel_tip(p))
 	h.add_child(_icon_btn("up", "Earlier", i > 0, func(): _move(i, -1)))
 	h.add_child(_icon_btn("down", "Later", i < van.cargo.size() - 1, func(): _move(i, 1)))
 	h.add_child(_icon_btn("close", "Unload back to the depot", true, func():
@@ -279,6 +334,7 @@ func _depot_row(p: Parcel) -> Control:
 		tip = "Needs a liftgate" if p.heavy() and not van.carries_heavy() else "Doesn't fit"
 	h.add_child(_icon_btn("plus", tip, fits, func():
 		main.submit_player({"type": "load_parcel", "van": van.id, "parcel": p.id})))
+	UIKit.tip(row, _parcel_tip(p))
 	return row
 
 

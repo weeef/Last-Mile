@@ -246,6 +246,28 @@ static func slider(lo: float, hi: float, step: float) -> HSlider:
 	return s
 
 
+## Gives any control a hover explanation. Long text is wrapped to ~56 columns.
+static func tip(c: Control, text: String) -> Control:
+	c.tooltip_text = wrap_text(text)
+	if c.mouse_filter == Control.MOUSE_FILTER_IGNORE:
+		c.mouse_filter = Control.MOUSE_FILTER_PASS
+	return c
+
+
+static func wrap_text(text: String, width := 56) -> String:
+	var out: PackedStringArray = []
+	for para in text.split("\n"):
+		var line := ""
+		for word in para.split(" "):
+			if line.length() + word.length() + 1 > width and line != "":
+				out.append(line)
+				line = word
+			else:
+				line = word if line == "" else line + " " + word
+		out.append(line)
+	return "\n".join(out)
+
+
 static func money(v: float) -> String:
 	var neg := v < 0.0
 	var n := int(round(absf(v)))

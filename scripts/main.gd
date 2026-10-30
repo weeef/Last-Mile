@@ -22,6 +22,9 @@ var _tutorial: Tutorial = null
 var _want_tutorial := false
 var profile := Profile.load_or_new()
 var audio: GameAudio
+var hints: Hints
+var _help: HelpScreen = null
+var _hint_speed := 0
 var skipping := false         # fast-forward until something needs the player
 var _skip_ready := 0
 const SKIP_SPEED := 16
@@ -38,6 +41,17 @@ func _ready() -> void:
 	cam.clicked.connect(_on_world_clicked)
 	layer = CanvasLayer.new()
 	add_child(layer)
+	hints = Hints.new()
+	hints.profile = profile
+	layer.add_child(hints)
+	hints.opened.connect(func():
+		if speed > 0:
+			_hint_speed = speed
+			speed = 0)
+	hints.dismissed.connect(func():
+		if _hint_speed > 0 and started and _overlay == null:
+			set_speed(_hint_speed)
+		_hint_speed = 0)
 	_show_title()
 	if settings.first_run:
 		settings.save()
@@ -197,6 +211,7 @@ func _on_sim_event(n: String, _d: Dictionary) -> void:
 	if skipping and n in SKIP_STOP_EVENTS:
 		_stop_skip()
 	_event_sound(n, _d)
+	_event_hint(n, _d)
 	match n:
 		"morning":
 			save_game()
@@ -349,7 +364,10 @@ func _quit() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not started or _overlay != null:
+	if started and _help == null and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F1:
+		open_help()
+		return
+	if not started or _overlay != null or _help != null:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
@@ -389,11 +407,68 @@ func open_pause() -> void:
 		set_speed(resume_speed))
 	m.save_requested.connect(func(): m.show_saved(save_game()))
 	m.settings_requested.connect(open_settings)
+	m.help_requested.connect(open_help)
 	m.title_requested.connect(func():
 		save_game()
 		_show_title())
 	m.quit_requested.connect(_quit)
 	_set_overlay(m)
+
+
+## The handbook (? button, F1, pause menu). Pauses while open.
+func open_help() -> void:
+	if _help != null or sim == null:
+		return
+	var resume := speed
+	speed = 0
+	_help = HelpScreen.new()
+	_help.setup(sim)
+	layer.add_child(_help)
+	_help.closed.connect(func():
+		_help.queue_free()
+		_help = null
+		if resume > 0 and _overlay == null:
+			set_speed(resume))
+
+
+## First-time tips for sim events.
+func _event_hint(n: String, d: Dictionary) -> void:
+	match n:
+		"day_begun":
+			if not _want_tutorial and _tutorial == null:
+				hints.trigger("first_day")
+			if sim.today_type == "boss":
+				hints.trigger("boss")
+			elif sim.twist != "":
+				hints.trigger("twist")
+		"job_arrived":
+			hints.trigger("job_arrived")
+		"not_home":
+			if d["van"].company == Sim.PLAYER:
+				hints.trigger("not_home")
+		"breakdown":
+			if d["van"].company == Sim.PLAYER:
+				hints.trigger("breakdown")
+		"rush_order":
+			hints.trigger("rush")
+		"evening":
+			hints.trigger({"shop": "shop", "relic": "relic"}.get(sim.evening_stage, "draft"))
+		"plan_tomorrow":
+			hints.trigger("plan")
+		"route_combo", "route_bust":
+			hints.trigger("combo")
+		"streak_tier":
+			hints.trigger("streak")
+		"morning":
+			if not sim.morning_event.is_empty():
+				hints.trigger("event")
+		"level_up":
+			hints.trigger("level")
+		"delivered":
+			if d["parcel"].late and d["van"].company == Sim.PLAYER:
+				hints.trigger("late")
+			elif d["van"].company == Sim.PLAYER and sim.hustle >= sim.hustle_cap():
+				hints.trigger("hustle")
 
 
 func apply_settings() -> void:

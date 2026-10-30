@@ -6,12 +6,12 @@ const DATA := {
 	&"lead_foot": {"name": "Lead Foot", "desc": "Drives 25% faster", "color": Color("b5483a")},
 	&"chatty": {"name": "Chatty", "desc": "Stops take 50% longer, but every on-time drop earns a $3 tip", "color": Color("c98a1e")},
 	&"organized": {"name": "Organized", "desc": "Drop-offs are 25% quicker", "color": Color("3f8577")},
-	&"rookie": {"name": "Rookie", "desc": "A little slow, but learns routes twice as fast", "color": Color("2f5f86")},
-	&"night_owl": {"name": "Night Owl", "desc": "Faster after 6pm, sluggish before 9am", "color": Color("6c5796")},
-	&"local": {"name": "Local", "desc": "Knows their home district by heart", "color": Color("4f7a46")},
+	&"rookie": {"name": "Rookie", "desc": "10% slower driving, 15% slower drops, but learns districts twice as fast", "color": Color("2f5f86")},
+	&"night_owl": {"name": "Night Owl", "desc": "20% faster after 18:00, 15% slower before 09:00", "color": Color("6c5796")},
+	&"local": {"name": "Local", "desc": "Starts knowing their home district 100% (drops there 35% quicker)", "color": Color("4f7a46")},
 	&"sunny": {"name": "Sunny", "desc": "Mood never drops below 50", "color": Color("b8962a")},
-	&"gearhead": {"name": "Gearhead", "desc": "Babies the engine. Half the wear, rarely breaks down", "color": Color("5b6170")},
-	&"heavy_hands": {"name": "Heavy Hands", "desc": "Fast loader, rough on the vehicle", "color": Color("9a5a2e")},
+	&"gearhead": {"name": "Gearhead", "desc": "Half the wear and 60% fewer breakdowns", "color": Color("5b6170")},
+	&"heavy_hands": {"name": "Heavy Hands", "desc": "Loads 40% faster, but wears the vehicle 40% faster", "color": Color("9a5a2e")},
 }
 
 const FIRST_NAMES := ["Rosa", "Theo", "Priya", "Marcus", "Juniper", "Dev", "Hana", "Ollie", "Bea", "Kofi",

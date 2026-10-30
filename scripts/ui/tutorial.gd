@@ -109,14 +109,14 @@ func _define_steps() -> void:
 		},
 		{
 			"title": "Loading up",
-			"body": "The parcels get sorted, then your vehicles load whatever fits. Watch the FLEET list. A vehicle stamped READY is loaded and waiting for your word.",
+			"body": "The parcels get sorted, then your vehicles load whatever fits. Watch the FLEET list. A vehicle stamped LOADED is waiting for you to send it. Every vehicle costs wages and fuel while it works, so a full load pays best.",
 			"enter": func(): hud.set_tab("fleet"),
 			"target": func(): return hud.clipboard,
 			"done": func(): return _any_van(func(v): return v.ready or v.on_road()),
 		},
 		{
 			"title": "Plan it, then send it",
-			"body": "Click the ready vehicle to open its ROUTE SHEET. Each stop shows when you'll get there: red is late, yellow means nobody's home yet. Shuffle stops with the arrows, then hit SEND IT.",
+			"body": "Click the loaded vehicle to open its ROUTE SHEET. Each stop shows when you'll get there: red is late, yellow means nobody's home yet. The sheet also shows what the trip costs per hour. Shuffle stops with the arrows, then hit SEND.",
 			"target": func():
 				if hud.selected and hud.route_sheet.visible:
 					return hud.route_sheet.send_button()
@@ -126,7 +126,7 @@ func _define_steps() -> void:
 		},
 		{
 			"title": "You're in business",
-			"body": "Watch for RUSH orders on the board, road works and rush hour. If a vehicle breaks down, send a rescue before the tow takes the parcels back. At 21:00 you'll get a report card and pick an upgrade card. Stack mods on one truck to build a monster.",
+			"body": "Every vehicle costs wages and fuel, even parked, so keep them busy. Hover your cash to see where money goes, hover anything else for an explanation, and press F1 (or the ? button) for the handbook. If a vehicle breaks down, send a rescue before the tow takes the parcels back. At 21:00 you'll get a report with a full money breakdown and pick an upgrade card.",
 			"next": true,
 			"button": "Let's go",
 		},

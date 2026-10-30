@@ -42,6 +42,10 @@ var _streak_box: PanelContainer
 var _streak_val: Label
 var _streak_sub: Label
 var _streak_shown := -1
+var _level_tip: Control
+var _rival_tip: Control
+var _cash_tip: Control
+var _tip_frame := 0
 var _hustle_bar: LMBar
 var _hustle_val: Label
 var _power_btns := {}
@@ -142,6 +146,8 @@ func _build_masthead() -> void:
 	_level_bar.back = Palette.INK_3
 	_level_bar.ticks = 10
 	lv.add_child(_level_bar)
+	lv.mouse_filter = Control.MOUSE_FILTER_STOP
+	_level_tip = lv
 	_level_sub = UIKit.mono("", 11, Palette.TEXT_INV_SOFT)
 	lv.add_child(_level_sub)
 	h.add_child(lv)
@@ -185,6 +191,8 @@ func _build_cash_and_rival() -> void:
 	_rival_sub = UIKit.label("", 12, Palette.TEXT_INV_SOFT)
 	rv.add_child(_rival_sub)
 	r.add_child(rv)
+	r.mouse_filter = Control.MOUSE_FILTER_STOP
+	_rival_tip = r
 	r.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	h.add_child(r)
 	var c := UIKit.paper(10)
@@ -192,6 +200,8 @@ func _build_cash_and_rival() -> void:
 	cv.add_child(UIKit.head("Cash on hand", 13, Palette.TEXT_SOFT))
 	_cash = UIKit.mono("", 28, Palette.TEXT, true)
 	cv.add_child(_cash)
+	c.mouse_filter = Control.MOUSE_FILTER_STOP
+	_cash_tip = c
 	_cash_delta = UIKit.mono("", 12, Palette.GREEN)
 	cv.add_child(_cash_delta)
 	c.add_child(cv)
@@ -221,7 +231,8 @@ func _build_stats() -> void:
 		var sub := UIKit.label("", 11, Palette.TEXT_SOFT)
 		v.add_child(sub)
 		h.add_child(v)
-		_stats[d[0]] = {"value": val, "sub": sub}
+		_stats[d[0]] = {"value": val, "sub": sub, "box": v}
+		v.mouse_filter = Control.MOUSE_FILTER_STOP
 	_place(p, Control.PRESET_TOP_LEFT, Vector2(16, 92))
 	var hint := UIKit.label("drag: pan   ·   right-drag / Q E: rotate   ·   wheel: zoom   ·   click a vehicle   ·   space: pause", 12, Color(Palette.PAPER, 0.75), "head_semi")
 	hint.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.5))
@@ -233,6 +244,7 @@ func _build_stats() -> void:
 	ch.add_child(UIKit.head("Today's contract", 13, Palette.TEXT_SOFT))
 	_contract_label = UIKit.label("", 14, Palette.TEXT, "bold")
 	ch.add_child(_contract_label)
+	UIKit.tip(cp, "Today's contract, picked at the morning briefing. Finish it by 21:00 for its cash reward, a better card draft tonight and a star.\n" + Explain.stars())
 	_contract_bar = LMBar.new()
 	_contract_bar.custom_minimum_size = Vector2(90, 8)
 	_contract_bar.color = Palette.GREEN
@@ -247,6 +259,7 @@ func _build_stats() -> void:
 	cond.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
 	cond.add_theme_constant_override("shadow_offset_y", 1)
 	_conditions = cond
+	cond.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(cond)
 
 
@@ -358,6 +371,23 @@ func _build_powers() -> void:
 	_place(p, Control.PRESET_TOP_LEFT, Vector2(16, 292))
 
 
+## Hover text for the always-visible widgets (refreshed a few times a second).
+func _refresh_tips() -> void:
+	var p := sim.player()
+	UIKit.tip(_cash_tip, Explain.cash(p))
+	UIKit.tip(_level_tip, Explain.levels(p))
+	UIKit.tip(_rival_tip, Explain.zoomer(sim))
+	UIKit.tip(_stats["ontime"]["box"], "Share of today's drops delivered before their deadline. Late drops pay 30%%, break your streak and hurt reputation.\n" + Explain.stars())
+	UIKit.tip(_stats["done"]["box"], "Parcels delivered today and what they paid (including streak and tips).")
+	UIKit.tip(_stats["share"]["box"], Explain.walkins(sim))
+	UIKit.tip(_stats["fleet"]["box"], "Vehicles out on the road / in your fleet. Fleet cap %d at this business level. Every vehicle costs wages even when parked." % p.fleet_cap())
+	UIKit.tip(_conditions, Explain.conditions(sim))
+	if sim.season_on():
+		UIKit.tip(_season_panel, Explain.lease(sim))
+	UIKit.tip(_streak_box, Explain.streak(sim))
+	UIKit.tip(_hustle_bar.get_parent(), Explain.hustle(sim))
+
+
 ## Fires a dispatcher power (button or hotkey).
 func use_power(id: String) -> void:
 	var cmd := {"type": "ability", "ability": id}
@@ -420,6 +450,21 @@ func _build_tools() -> void:
 		var key: String = d[0]
 		b.pressed.connect(func(): main.camera_tool(key))
 		v.add_child(b)
+	var help := Button.new()
+	help.text = "?"
+	help.custom_minimum_size = Vector2(38, 38)
+	help.focus_mode = Control.FOCUS_NONE
+	help.add_theme_font_override("font", UIKit.font("head"))
+	help.add_theme_font_size_override("font_size", 22)
+	help.add_theme_color_override("font_color", Palette.PAPER)
+	help.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	help.add_theme_stylebox_override("hover", UIKit.flat(Palette.INK_3, 2))
+	help.add_theme_stylebox_override("pressed", UIKit.flat(Palette.INK, 2))
+	help.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	help.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	help.tooltip_text = "Handbook: how everything works (F1)"
+	help.pressed.connect(func(): main.open_help())
+	v.add_child(help)
 	_place(_tools, Control.PRESET_TOP_RIGHT, Vector2(16, 104), Vector2(46, 0))
 
 
@@ -481,8 +526,10 @@ func _build_detail() -> void:
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 3)
 	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for key in ["Condition", "Mood", "Load", "Next stop", "ETA", "Knows area"]:
-		grid.add_child(UIKit.head(key, 14, Palette.TEXT_SOFT))
+	for key in ["Condition", "Mood", "Load", "Next stop", "ETA", "Knows area", "Running cost", "Since report"]:
+		var kl := UIKit.head(key, 14, Palette.TEXT_SOFT)
+		_d[key + "_head"] = kl
+		grid.add_child(kl)
 		if key == "Condition" or key == "Mood":
 			var mh := UIKit.hbox(8)
 			mh.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -514,7 +561,7 @@ func _build_detail() -> void:
 	v.add_child(_d["mods"])
 
 	var actions := UIKit.hbox(8)
-	_d["start"] = UIKit.button("Start route", "go", 16)
+	_d["start"] = UIKit.button("Send", "go", 16)
 	_d["start"].size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_d["start"].custom_minimum_size.y = 36
 	_d["start"].pressed.connect(func():
@@ -619,10 +666,12 @@ func _refresh_detail() -> void:
 			ch.queue_free()
 		for t in d.traits:
 			var tr := UIKit.hbox(8)
+			UIKit.tip(tr, Explain.trait_tip(d, t))
+			tr.mouse_filter = Control.MOUSE_FILTER_STOP
 			var st := UIKit.stamp(Traits.trait_name(t), Traits.trait_color(t).darkened(0.1), 12)
 			st.custom_minimum_size.x = 92
 			tr.add_child(st)
-			var desc := UIKit.label(Traits.trait_desc(t), 12, Palette.TEXT_SOFT)
+			var desc := UIKit.label(Traits.trait_desc(t) + (" (%s)" % City.DISTRICT_NAMES[d.home_district] if t == &"local" else ""), 12, Palette.TEXT_SOFT)
 			desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			tr.add_child(desc)
@@ -635,7 +684,8 @@ func _refresh_detail() -> void:
 			mh.add_child(UIKit.head("Mods %d/%d" % [v.mods.size(), v.mod_slots()], 13, Palette.TEXT_SOFT))
 			for m in v.mods:
 				var cd := Cards.get_card(m)
-				mh.add_child(UIKit.stamp(cd["name"], Cards.RARITY_COLORS[cd["rarity"]], 11))
+				mh.add_child(UIKit.tip(UIKit.stamp(cd["name"], Cards.RARITY_COLORS[cd["rarity"]], 11), "%s: %s" % [cd["name"], cd["desc"]]))
+			UIKit.tip(mh, "Upgrade cards installed on this vehicle. A %s has %d slots; a new mod on a full vehicle replaces the oldest." % [v.spec()["name"], v.mod_slots()])
 	_d["driver"].text = d.name
 	_d["driver_sub"].text = "· %d drops today · hired day %d" % [d.delivered_today, d.hired_day]
 	var col := _state_color(v)
@@ -649,7 +699,7 @@ func _refresh_detail() -> void:
 		Van.State.RETURNING:
 			dest = "back to " + c.depot_name
 		Van.State.LOADING:
-			dest = "loaded, waiting for your go" if v.ready else "loading at " + c.depot_name
+			dest = "loaded, press SEND" if v.ready else "loading at " + c.depot_name
 		Van.State.BROKEN:
 			dest = "tow truck in %d min" % ceili(v.timer)
 		Van.State.TOWING:
@@ -657,10 +707,7 @@ func _refresh_detail() -> void:
 		Van.State.TO_SHOP:
 			dest = "driving to Gearbox Garage"
 		Van.State.AT_SHOP:
-			if v.shop_waiting:
-				dest = "#%d in line for a bay" % (sim.garage_position(v) + 1)
-			else:
-				dest = "%s · %d min left" % ["repair" if v.shop_reason == "repair" else "service", ceili(v.shop_timer)]
+			dest = ("%s · " % ("repair" if v.shop_reason == "repair" else "service")) + sim.garage_status(v)
 		_:
 			dest = "parked at " + c.depot_name
 	_d["dest"].text = dest
@@ -679,16 +726,33 @@ func _refresh_detail() -> void:
 	var cb: LMBar = _d["Condition_bar"]
 	cb.value = v.condition
 	cb.color = _cond_color(v.condition)
-	_d["Condition"].text = "%d%%" % int(v.condition * 100)
+	_d["Condition"].text = "%d%% · %.1f%%/h" % [int(v.condition * 100), sim.breakdown_risk(v) * 100.0]
 	var mb: LMBar = _d["Mood_bar"]
 	mb.value = d.mood / 100.0
 	mb.color = Palette.GREEN if d.mood >= 60 else (Palette.AMBER if d.mood >= 40 else Palette.RED)
-	_d["Mood"].text = d.mood_word()
+	_d["Mood"].text = "%d · x%.2f" % [int(d.mood), 0.85 + 0.3 * d.mood / 100.0]
 	_d["Load"].text = "%d/%d · %d/%dkg" % [v.cargo.size(), v.slots, int(v.load_kg()), int(v.max_kg)]
 	_d["Next stop"].text = sim.house(np.house)["address"] if np else "—"
 	_d["ETA"].text = ("%d min" % ceili(sim.eta_minutes(v))) if v.state in [Van.State.EN_ROUTE, Van.State.RETURNING, Van.State.TOWING, Van.State.TO_SHOP] else "—"
 	var dist := np.district if np else d.home_district
-	_d["Knows area"].text = "%s %d%%" % [City.DISTRICT_NAMES[dist], int(d.familiarity[dist] * 100)]
+	_d["Knows area"].text = "%s %d%% · drops -%d%%" % [City.DISTRICT_NAMES[dist], int(d.familiarity[dist] * 100), int(35.0 * d.familiarity[dist])]
+	var rc := sim.running_costs(v)
+	_d["Running cost"].text = "$%d/h road · $%d/h parked" % [int(round(rc["drive"])), int(round(rc["wage_parked"]))]
+	_d["Since report"].text = "+%s  -%s" % [UIKit.money(v.earned_today), UIKit.money(v.cost_today)]
+	# Hover explanations for every row (cheap to refresh each frame).
+	var cond_tip := Explain.condition(sim, v)
+	UIKit.tip(_d["Condition_head"], cond_tip)
+	UIKit.tip(_d["Condition"].get_parent(), cond_tip)
+	UIKit.tip(_d["Mood_head"], Explain.mood(v))
+	UIKit.tip(_d["Mood"].get_parent(), Explain.mood(v))
+	UIKit.tip(_d["Load_head"], "Parcels aboard / slots, and weight / max load. Whichever fills first limits the load. Full loads score the Full Truck combo.")
+	UIKit.tip(_d["Knows area_head"], Explain.area(v, dist))
+	UIKit.tip(_d["Knows area"], Explain.area(v, dist))
+	UIKit.tip(_d["Running cost_head"], Explain.costs(sim, v))
+	UIKit.tip(_d["Running cost"], Explain.costs(sim, v))
+	UIKit.tip(_d["Since report_head"], "What this vehicle earned (drops, streak, tips, clean runs) and cost (wages, fuel, tows, repairs) since the last evening report.")
+	UIKit.tip(_d["status"], Explain.status(v))
+	UIKit.tip(_d["ETA_head"], "Minutes until it reaches its next destination at current traffic.")
 	var rescue: Button = _d["rescue"]
 	rescue.visible = mine and v.state == Van.State.BROKEN and not v.cargo.is_empty()
 	if rescue.visible:
@@ -698,7 +762,7 @@ func _refresh_detail() -> void:
 	if mine:
 		var start: Button = _d["start"]
 		start.disabled = not (v.state == Van.State.LOADING and not v.cargo.is_empty())
-		start.text = "START ROUTE" if v.state != Van.State.LOADING or v.ready or v.cargo.is_empty() else "START NOW (%d%%)" % int(v.fill_ratio() * 100)
+		start.text = "SEND" if v.state != Van.State.LOADING or v.ready or v.cargo.is_empty() else "SEND NOW (%d%%)" % int(v.fill_ratio() * 100)
 		(_d["service"] as Button).disabled = v.state != Van.State.IDLE or c.money < Sim.SERVICE_COST
 
 
@@ -948,9 +1012,12 @@ func _job_row(j: Job) -> Control:
 	var pay := UIKit.mono(UIKit.money(j.pay), 20, Palette.GREEN.darkened(0.1), true)
 	pay.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(pay)
+	UIKit.tip(pay, Explain.job(sim, j))
+	UIKit.tip(mid, Explain.job_timing(sim, j) + ("\nHeavy: needs a box truck or a vehicle with a Liftgate Kit." if j.needs_liftgate() else "") + ("\nRush: accept within 20 min; it's packed twice as fast and due 1 hour after drop-off." if j.rush else ""))
 	var right: Control
 	if j.state == Job.State.OFFERED:
 		var b := UIKit.button("Take", "go", 15)
+		UIKit.tip(b, "Accept this job. The vendor starts packing, then drives the parcels to your depot.")
 		b.custom_minimum_size = Vector2(64, 30)
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		var jid := j.id
@@ -988,6 +1055,7 @@ func _vendor_row(vi: int) -> Control:
 	who.add_child(UIKit.label(vd["kind"], 11, Palette.TEXT_SOFT))
 	h.add_child(who)
 	var info := UIKit.label("packs in %dm · pay ×%.2f%s" % [int(vd["prep"]), vd["mult"], "  · heavy freight" if vd["heavy"] >= 1.0 else ""], 12, Palette.TEXT_SOFT)
+	UIKit.tip(info, "%s posts jobs on your board once they're a partner. They pack an order in %d min, pay x%.2f the normal rate, %d%% of their orders are express%s." % [vd["name"], int(vd["prep"]), vd["mult"], int(vd["express"] * 100), ", and most items are heavy (needs a liftgate)" if vd["heavy"] >= 1.0 else ""])
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(info)
@@ -1023,9 +1091,9 @@ func _refresh_jobs() -> void:
 		var vd := Vendors.get_vendor(j.vendor)
 		if j.state == Job.State.OFFERED:
 			if j.rush:
-				r["sub"].text = "RUSH: accept in %dm · due %s after drop-off" % [maxi(0, int(j.expires - now)), _dur(j.promise)]
+				r["sub"].text = "RUSH: take within %dm · deliver within %s of reaching your depot" % [maxi(0, int(j.expires - now)), _dur(j.promise * sim.promise_mult())]
 			else:
-				r["sub"].text = "due %s after drop-off · posted %dm more" % [_dur(j.promise), maxi(0, int(j.expires - now))]
+				r["sub"].text = "deliver within %s of reaching your depot · offer ends in %dm" % [_dur(j.promise * sim.promise_mult()), maxi(0, int(j.expires - now))]
 			var b: Button = r["right"]
 			b.disabled = j.needs_liftgate() and not has_box
 			b.tooltip_text = "Needs a box truck (liftgate)" if b.disabled else "%s packs it in %d min, then drops it at your depot." % [vd["name"], int(vd["prep"])]
@@ -1062,9 +1130,10 @@ static func _dur(m: float) -> String:
 func _page_fleet() -> Control:
 	var v := UIKit.vbox(6)
 	var top := UIKit.hbox(8)
-	top.add_child(UIKit.label("READY = loaded and waiting for you. GO? = leave now, half empty.", 12, Palette.TEXT_SOFT))
+	top.add_child(UIKit.label("LOADED = waiting for you to SEND it. SEND? = send it before it's full.", 12, Palette.TEXT_SOFT))
 	top.add_child(UIKit.spacer())
-	var all := UIKit.button("Start all ready", "go", 14)
+	var all := UIKit.button("Send all loaded", "go", 14)
+	UIKit.tip(all, "Send every vehicle that's loaded and waiting at the depot.")
 	all.pressed.connect(func():
 		for van in sim.player().vans:
 			if van.ready:
@@ -1119,16 +1188,16 @@ func _add_fleet_row(v: Van) -> void:
 	cv.add_child(cl)
 	h.add_child(cv)
 	var slot := Control.new()
-	slot.custom_minimum_size = Vector2(48, 30)
+	slot.custom_minimum_size = Vector2(58, 30)
 	slot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var go := UIKit.button("Go", "go", 15)
+	var go := UIKit.button("Send", "go", 14)
 	go.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	go.tooltip_text = "Start route"
+	UIKit.tip(go, "Send this vehicle out on its route now.")
 	go.pressed.connect(func(): main.submit_player({"type": "start_route", "van": v.id}))
 	slot.add_child(go)
 	h.add_child(slot)
 	_fleet_list.add_child(panel)
-	_fleet_rows[v.id] = {"van": v, "panel": panel, "act": act, "stamp": st, "bar": cb, "cond": cl, "go": go}
+	_fleet_rows[v.id] = {"van": v, "panel": panel, "act": act, "stamp": st, "bar": cb, "cond": cl, "go": go, "cv": cv}
 
 
 func fleet_go_button() -> Control:
@@ -1167,8 +1236,10 @@ func _refresh_fleet() -> void:
 			Van.State.TO_SHOP:
 				act = "Driving to the garage"
 			Van.State.AT_SHOP:
-				act = ("In line for a bay (#%d)" % (sim.garage_position(v) + 1)) if v.shop_waiting else "%s, %dm left" % ["Repair" if v.shop_reason == "repair" else "Service", ceili(v.shop_timer)]
-		r["act"].text = act
+				act = sim.garage_status(v).capitalize()
+		r["act"].text = act + "  ·  +%s -%s" % [UIKit.money(v.earned_today), UIKit.money(v.cost_today)]
+		UIKit.tip(r["panel"], "%s · %s\n%s\n\n%s\n\nClick to open its route sheet." % [v.code, v.spec()["name"], Explain.status(v), Explain.costs(sim, v)])
+		UIKit.tip(r["cv"], Explain.condition(sim, v))
 		UIKit.set_stamp(r["stamp"], v.status_name(), _state_color(v))
 		var cb: LMBar = r["bar"]
 		cb.value = v.condition
@@ -1176,7 +1247,8 @@ func _refresh_fleet() -> void:
 		r["cond"].text = "cond %d%%" % int(v.condition * 100)
 		var go: Button = r["go"]
 		go.visible = v.state == Van.State.LOADING and not v.cargo.is_empty()
-		go.text = "GO" if v.ready else "GO?"
+		go.text = "SEND" if v.ready else "SEND?"
+		UIKit.tip(go, "Loaded and waiting: send it now." if v.ready else "Still loading (%d%% full). Send it now anyway?" % int(v.fill_ratio() * 100))
 	var p := sim.player()
 	var ready := 0
 	for v in p.vans:
@@ -1210,6 +1282,7 @@ func _buy_card(t: StringName) -> Control:
 	p.add_child(v)
 	v.add_child(UIKit.head(spec["name"], 19, Palette.TEXT))
 	v.add_child(UIKit.mono(UIKit.money(spec["cost"]), 18, Palette.TEXT, true))
+	UIKit.tip(p, Explain.vehicle_type(t))
 	for row in [["Speed", spec["speed"] / 1.25], ["Space", spec["slots"] / 16.0], ["Max load", spec["kg"] / 900.0], ["Tough", 1.0 / spec["wear"] / 1.25]]:
 		var rh := UIKit.hbox(6)
 		var l := UIKit.head(row[0], 12, Palette.TEXT_SOFT)
@@ -1259,15 +1332,16 @@ func _refresh_buy() -> void:
 func _page_rules() -> Control:
 	var v := UIKit.vbox(5)
 	var row := UIKit.hbox(8)
-	row.add_child(UIKit.head("Auto-dispatch", 18, Palette.TEXT))
+	row.add_child(UIKit.head("Auto-send", 18, Palette.TEXT))
 	row.add_child(UIKit.spacer())
 	var tog := UIKit.button("Off", "paper", 15)
 	tog.custom_minimum_size.x = 70
 	tog.pressed.connect(func(): main.submit_player({"type": "set_auto_dispatch", "value": not sim.player().auto_dispatch}))
 	row.add_child(tog)
 	_rules["auto"] = tog
+	UIKit.tip(tog, "Turn automatic sending on or off for every vehicle. Auto-load (filling vehicles at the depot) is set per vehicle on its route sheet.")
 	v.add_child(row)
-	var d1 := UIKit.label("When on, vehicles leave by themselves using the rules below. When off, you press GO.", 12, Palette.TEXT_SOFT)
+	var d1 := UIKit.label("When on, loaded vehicles leave by themselves using the rules below. They also leave at once if any parcel aboard is due within 35 min. When off, you press SEND.", 12, Palette.TEXT_SOFT)
 	d1.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(d1)
 	_rules["thr_l"] = UIKit.label("", 13, Palette.TEXT, "bold")
@@ -1286,7 +1360,7 @@ func _page_rules() -> Control:
 	_rules["svc"] = UIKit.slider(0, 70, 5)
 	_rules["svc"].value_changed.connect(func(x): main.submit_player({"type": "set_auto_service", "value": x / 100.0}))
 	v.add_child(_rules["svc"])
-	var d2 := UIKit.label("Parked vehicles below this condition drive to Gearbox Garage for a $%d service. A breakdown costs a tow ($%d), a repair ($%d) and hours off the road." % [int(Sim.SERVICE_COST), int(Sim.TOW_COST), int(Sim.REPAIR_COST)], 12, Palette.TEXT_SOFT)
+	var d2 := UIKit.label("Parked vehicles below this condition drive to Gearbox Garage for a $%d service (%d min, back to 100%%). A breakdown costs a tow ($%d), a repair ($%d), about %d min off the road, and late parcels. Breakdown risk per hour of driving: 0.2%% at 90%% condition, 1.5%% at 70%%, 4%% at 50%%, 8%% at 30%%." % [int(Sim.SERVICE_COST), int(Sim.SERVICE_MIN), int(Sim.TOW_COST), int(Sim.REPAIR_COST), int(Sim.TOW_WAIT + Sim.REPAIR_MIN)], 12, Palette.TEXT_SOFT)
 	d2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(d2)
 	return _scroll(v)
@@ -1311,7 +1385,7 @@ func _refresh_rules() -> void:
 
 func _page_map() -> Control:
 	var v := UIKit.vbox(8)
-	var l := UIKit.label("Walk-in customers go with whoever has been faster and more reliable in their district.", 12, Palette.TEXT_SOFT)
+	var l := UIKit.label("Each walk-in order goes to you with a chance equal to your share in its district. Every 10 minutes share drifts toward whoever has the better reputation there: on-time drops (early ones most) raise yours, late or overdue parcels lower it. Hover a district for details.", 12, Palette.TEXT_SOFT)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(l)
 	for d in 4:
@@ -1331,7 +1405,8 @@ func _page_map() -> Control:
 		bar.custom_minimum_size.y = 14
 		row.add_child(bar)
 		v.add_child(row)
-		_district_rows.append({"share": sh, "bar": bar})
+		row.mouse_filter = Control.MOUSE_FILTER_STOP
+		_district_rows.append({"share": sh, "bar": bar, "row": row})
 	return v
 
 
@@ -1340,7 +1415,10 @@ func _refresh_map() -> void:
 		var r: Dictionary = _district_rows[d]
 		var s := sim.share[d]
 		(r["bar"] as LMBar).value = s
-		r["share"].text = "you %d%% · zoomer %d%% · rep %d vs %d" % [int(round(s * 100)), int(round((1.0 - s) * 100)), int(sim.score[d][0] * 100), int(sim.score[d][1] * 100)]
+		var gap: float = sim.score[d][0] - sim.score[d][1]
+		var trend := "rising" if gap > 0.01 else ("falling" if gap < -0.01 else "steady")
+		r["share"].text = "you %d%% (%s) · rep %d vs %d" % [int(round(s * 100)), trend, int(sim.score[d][0] * 100), int(sim.score[d][1] * 100)]
+		UIKit.tip(r["row"], Explain.share(sim, d))
 
 
 # ============================================================= overlay
@@ -1487,8 +1565,8 @@ func refresh(speed: int, cam: Camera3D, world: WorldView) -> void:
 		(b.get_theme_stylebox("normal") as StyleBoxFlat).bg_color = Palette.ORANGE if on else Palette.PAPER_2
 	_cash.text = UIKit.money(p.money)
 	_cash.add_theme_color_override("font_color", Palette.RED if p.money < 0 else Palette.TEXT)
-	var dm := p.money - p.money_start_of_day
-	_cash_delta.text = "%s%s today" % ["+" if dm >= 0 else "", UIKit.money(dm)]
+	var dm := p.ledger_total()
+	_cash_delta.text = "%s%s since report" % ["+" if dm >= 0 else "", UIKit.money(dm)]
 	_cash_delta.add_theme_color_override("font_color", Palette.GREEN if dm >= 0 else Palette.RED)
 	_rival_sub.text = "%d vans · %d%% of walk-ins · %d waiting" % [r.vans.size(), int(round((1.0 - sim.total_share()) * 100)), r.backlog()]
 
@@ -1507,8 +1585,13 @@ func refresh(speed: int, cam: Camera3D, world: WorldView) -> void:
 			ready += 1
 	_stats["fleet"]["sub"].text = "%d ready · %d in shop" % [ready, shop]
 
+	# The route sheet needs the whole right column; it has its own depot tab.
+	clipboard.visible = not route_sheet.visible
 	_refresh_season()
 	_refresh_powers()
+	_tip_frame += 1
+	if _tip_frame % 15 == 0:
+		_refresh_tips()
 	_refresh_detail()
 	_refresh_tracking()
 	_refresh_fleet()

@@ -95,7 +95,7 @@ func spec() -> Dictionary:
 
 func status_name() -> String:
 	if state == State.LOADING and ready:
-		return "Ready"
+		return "Loaded"
 	if state == State.AT_SHOP and shop_waiting:
 		return "Waiting for bay"
 	return STATE_NAMES[state]

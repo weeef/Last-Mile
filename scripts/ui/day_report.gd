@@ -34,6 +34,8 @@ func _build() -> void:
 	var stars := StarRow.new()
 	stars.stars = r.get("stars", 0)
 	stars.custom_minimum_size = Vector2(150, 46)
+	UIKit.tip(stars, Explain.stars())
+	stars.mouse_filter = Control.MOUSE_FILTER_STOP
 	top.add_child(stars)
 	body.add_child(top)
 
@@ -43,14 +45,17 @@ func _build() -> void:
 	grid.add_theme_constant_override("v_separation", 2)
 	var rate: float = r.get("rate", 0.0)
 	for item in [["Delivered", str(r.get("delivered", 0))], ["On time", "%d%%" % int(rate * 100)],
-			["Revenue", UIKit.money(r.get("revenue", 0.0))], ["Net today", UIKit.money(r.get("net", 0.0))],
+			["Revenue", UIKit.money(r.get("revenue", 0.0))], ["Net", ("+" if r.get("net", 0.0) >= 0.0 else "") + UIKit.money(r.get("net", 0.0))],
 			["Late", str(r.get("late", 0))], ["Nobody home", str(r.get("failed_attempts", 0))],
 			["Breakdowns", str(r.get("breakdowns", 0))], ["Stars so far", str(sim.player().stars_total)]]:
 		var v := UIKit.vbox(-4)
 		v.add_child(UIKit.head(item[0], 12, Palette.TEXT_SOFT))
 		v.add_child(UIKit.mono(item[1], 20, Palette.TEXT, true))
 		grid.add_child(v)
-	body.add_child(grid)
+	var stats_row := UIKit.hbox(18)
+	stats_row.add_child(grid)
+	stats_row.add_child(_money_box(r))
+	body.add_child(stats_row)
 
 	var con: Dictionary = r.get("contract", {})
 	var crow := PanelContainer.new()
@@ -109,10 +114,13 @@ func _build_draft() -> void:
 	body.add_child(hdr)
 	var row := UIKit.hbox(14)
 	for id in sim.draft:
+		var col := UIKit.vbox(4)
 		var cv := CardView.new()
 		cv.setup(id)
 		cv.picked.connect(_on_card)
-		row.add_child(cv)
+		col.add_child(cv)
+		col.add_child(_preview_label(id, _best_van_for(id)))
+		row.add_child(col)
 	body.add_child(row)
 	var actions := UIKit.hbox(8)
 	var cost := sim.reroll_cost()
@@ -147,6 +155,8 @@ func _build_shop() -> void:
 		var idx := i
 		cv.picked.connect(func(_id): _buy(idx))
 		col.add_child(cv)
+		if not item["sold"]:
+			col.add_child(_preview_label(item["id"], _best_van_for(item["id"])))
 		var b := UIKit.button("Sold" if item["sold"] else "Buy  %s" % UIKit.money(item["price"]), "go", 15)
 		b.disabled = item["sold"] or p.money < item["price"]
 		b.pressed.connect(func(): _buy(idx))
@@ -220,6 +230,65 @@ func _build_plan() -> void:
 	body.add_child(row)
 
 
+## Where the money went since the last report, in vs out.
+func _money_box(r: Dictionary) -> Control:
+	var led: Dictionary = r.get("ledger", {})
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", UIKit.flat(Palette.PAPER_2, 2, 12, 8))
+	p.custom_minimum_size.x = 330
+	var cols := UIKit.hbox(16)
+	p.add_child(cols)
+	for side in [1, -1]:
+		var v := UIKit.vbox(-1)
+		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		v.add_child(UIKit.head("Money in" if side > 0 else "Money out", 12, Palette.GREEN if side > 0 else Palette.RED))
+		var total := 0.0
+		for k in Company.LEDGER_ORDER:
+			var amt: float = led.get(k, 0.0)
+			if amt * side <= 0.5:
+				continue
+			total += amt
+			var line := UIKit.hbox(6)
+			line.add_child(UIKit.label(Company.LEDGER_LABELS[k], 12, Palette.TEXT))
+			line.add_child(UIKit.spacer())
+			line.add_child(UIKit.mono(UIKit.money(absf(amt)), 12, Palette.TEXT, true))
+			v.add_child(line)
+		var tl := UIKit.hbox(6)
+		tl.add_child(UIKit.head("Total", 12, Palette.TEXT_SOFT))
+		tl.add_child(UIKit.spacer())
+		tl.add_child(UIKit.mono(UIKit.money(absf(total)), 13, Palette.GREEN if side > 0 else Palette.RED, true))
+		v.add_child(tl)
+		cols.add_child(v)
+	var per: Array = []
+	for e in r.get("vans", []):
+		per.append("%s: earned %s, cost %s (net %s)" % [e["code"], UIKit.money(e["earned"]), UIKit.money(e["cost"]), UIKit.money(e["earned"] - e["cost"])])
+	UIKit.tip(p, "Everything earned and spent since the last evening report, including last night's parked wages.\n\nBy vehicle:\n" + "\n".join(per) + "\n\nWages are paid every minute, even parked ($%.1f/h) and overnight." % (Van.WAGE_PER_MIN * 60.0 * 0.25))
+	p.mouse_filter = Control.MOUSE_FILTER_STOP
+	return p
+
+
+## The vehicle a mod would most likely go on (most free slots), for the preview.
+func _best_van_for(id: StringName) -> Van:
+	if not Cards.is_vehicle(id) or sim.player().vans.is_empty():
+		return null
+	var best: Van = sim.player().vans[0]
+	for v in sim.player().vans:
+		if v.mod_slots() - v.mods.size() > best.mod_slots() - best.mods.size():
+			best = v
+	return best
+
+
+func _preview_label(id: StringName, v: Van) -> Control:
+	var lines := Explain.card_preview(sim, id, v)
+	var head := ("On %s:" % v.code) if v != null else "Effect now:"
+	if lines.is_empty():
+		lines = ["(see the card text)"]
+	var l := UIKit.label(head + "\n" + "\n".join(lines), 11, Palette.GREEN.darkened(0.25), "bold")
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size.x = 176
+	return l
+
+
 ## Interest, streak and (on due evenings) the lease bill.
 func _season_row(r: Dictionary) -> Control:
 	var lease: Dictionary = r.get("lease", {})
@@ -285,6 +354,10 @@ func _build_vehicle_pick() -> void:
 		for k in v.mod_slots() - v.mods.size():
 			mods.add_child(UIKit.stamp("empty slot", Palette.RULE, 11))
 		h.add_child(mods)
+		var pv := Explain.card_preview(sim, _picking, v)
+		var pl := UIKit.label("\n".join(pv) if not pv.is_empty() else "no change", 12, Palette.GREEN.darkened(0.2), "bold")
+		pl.custom_minimum_size.x = 240
+		h.add_child(pl)
 		var full := v.mods.size() >= v.mod_slots()
 		var b := UIKit.button("Replace %s" % Cards.get_card(v.mods[0])["name"] if full else "Install", "paper" if full else "go", 14)
 		var vid := v.id

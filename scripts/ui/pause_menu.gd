@@ -5,6 +5,7 @@ extends Control
 signal resume
 signal save_requested
 signal settings_requested
+signal help_requested
 signal title_requested
 signal quit_requested
 
@@ -28,7 +29,7 @@ func _ready() -> void:
 	v.add_child(UIKit.head("Paused", 34, Palette.TEXT))
 	v.add_child(UIKit.label("Save slot %d" % slot, 12, Palette.TEXT_SOFT, "mono"))
 	v.add_child(UIKit.rule())
-	for item in [["Resume", "go", resume], ["Save game", "paper", save_requested], ["Settings", "paper", settings_requested],
+	for item in [["Resume", "go", resume], ["Save game", "paper", save_requested], ["Help (F1)", "paper", help_requested], ["Settings", "paper", settings_requested],
 			["Save & main menu", "paper", title_requested], ["Save & quit", "ink", quit_requested]]:
 		var b := UIKit.button(item[0], item[1], 19)
 		b.custom_minimum_size.y = 42
