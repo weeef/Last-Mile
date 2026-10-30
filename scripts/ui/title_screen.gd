@@ -72,7 +72,7 @@ func _ready() -> void:
 	_slots_view.add_child(back)
 	v.add_child(_slots_view)
 
-	var foot := UIKit.label("prototype v0.5", 11, Palette.TEXT_SOFT, "mono")
+	var foot := UIKit.label("prototype v0.8", 11, Palette.TEXT_SOFT, "mono")
 	v.add_child(foot)
 	add_child(_card)
 	_card.rotation_degrees = -0.5

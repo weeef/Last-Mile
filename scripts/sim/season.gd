@@ -70,7 +70,7 @@ const CHARTER_ORDER := ["courier", "green", "budget", "premium", "haulers"]
 ## Difficulty ladder. Winning at heat N unlocks heat N+1. Effects stack.
 const HEAT := [
 	"Standard season.",
-	"Leases +15% (and every heat level adds another 8%).",
+	"Leases +15% (and every heat level adds another 10%).",
 	"Zoomer starts with 2 extra vans.",
 	"One fewer card in every draft.",
 	"No final notice: miss a lease and you're out.",
@@ -83,9 +83,9 @@ const MAX_HEAT := 8
 const DAILY_HEAT := 2
 
 
-## Rent multiplier from heat: +8% per level, plus the heat 1 and heat 8 steps.
+## Rent multiplier from heat: +10% per level, plus the heat 1 and heat 8 steps.
 static func heat_lease_mult(heat: int) -> float:
-	var m := 1.0 + 0.08 * heat
+	var m := 1.0 + 0.10 * heat
 	if heat >= 1:
 		m *= 1.15
 	if heat >= 8:

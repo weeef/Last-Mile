@@ -1583,7 +1583,7 @@ func refresh(speed: int, cam: Camera3D, world: WorldView) -> void:
 	for v in p.vans:
 		if v.ready:
 			ready += 1
-	_stats["fleet"]["sub"].text = "%d ready · %d in shop" % [ready, shop]
+	_stats["fleet"]["sub"].text = "%d loaded · %d in shop" % [ready, shop]
 
 	# The route sheet needs the whole right column; it has its own depot tab.
 	clipboard.visible = not route_sheet.visible

@@ -266,8 +266,12 @@ Run a full season: `godot --headless --path . -s tools/season_test.gd`
 
 ## Screenshots
 
+| Handbook (F1) | Cash tooltip: where the money went |
+|---|---|
+| ![](docs/screenshots/handbook.png) | ![](docs/screenshots/cash-tooltip.png) |
+
 | Morning briefing | Route sheet |
 |---|---|
 | ![](docs/screenshots/briefing.png) | ![](docs/screenshots/route-sheet.png) |
-| **Evening report and card draft** | **A van on its route** |
+| **Evening report: money breakdown and card previews** | **A van on its route** |
 | ![](docs/screenshots/day-report.png) | ![](docs/screenshots/selected-van.png) |
