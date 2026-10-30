@@ -17,6 +17,7 @@ var expires := 0.0         # when an offer disappears from the board
 var state := State.OFFERED
 var timer := 0.0
 var rush := false          # short-notice order: big pay, accept fast
+var breakdown := {}        # how the pay was worked out, for the tooltip
 
 
 func stops() -> int:

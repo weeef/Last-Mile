@@ -27,6 +27,18 @@ const LEVELS := [
 ]
 
 
+## What reaching a business level unlocks, for tooltips and the level-up toast.
+static func level_unlocks(level: int) -> Array:
+	var out: Array = ["fleet cap %d" % LEVELS[level - 1]["fleet"]]
+	for t in VehicleTypes.ORDER:
+		if VehicleTypes.DATA[t]["level"] == level and level > 1:
+			out.append(VehicleTypes.DATA[t]["name"])
+	for v in LIST:
+		if v["level"] == level and level > 1:
+			out.append("%s (partner)" % v["name"])
+	return out
+
+
 static func count() -> int:
 	return LIST.size()
 

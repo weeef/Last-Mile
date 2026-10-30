@@ -25,7 +25,7 @@ const DATA := {
 	# ---- vehicle mods
 	&"eco_tune": {"name": "Eco Tune", "rarity": 0, "kind": "vehicle", "desc": "Fuel use −30%.", "fx": {"fuel": 0.7}},
 	&"roof_rack": {"name": "Roof Rack", "rarity": 0, "kind": "vehicle", "desc": "+2 parcel slots.", "fx": {"slots": 2}},
-	&"stiff_springs": {"name": "Heavy-Duty Springs", "rarity": 0, "kind": "vehicle", "desc": "Max load +30%.", "fx": {"kg": 1.3}},
+	&"stiff_springs": {"name": "Heavy-Duty Springs", "rarity": 0, "kind": "vehicle", "desc": "Max load +30% and wears out 20% slower.", "fx": {"kg": 1.3, "wear": 0.8}},
 	&"fresh_tires": {"name": "Fresh Tires", "rarity": 0, "kind": "vehicle", "desc": "Wears out 30% slower.", "fx": {"wear": 0.7}},
 	&"quick_shelves": {"name": "Quick-Release Shelving", "rarity": 1, "kind": "vehicle", "desc": "Drop-offs 25% faster.", "fx": {"stop": 0.75}},
 	&"reinforced": {"name": "Reinforced Drivetrain", "rarity": 1, "kind": "vehicle", "desc": "Breakdown chance −60%.", "fx": {"break": 0.4}},
@@ -44,7 +44,7 @@ const DATA := {
 	&"pizza_friday": {"name": "Pizza Friday", "rarity": 0, "kind": "company", "desc": "Every driver +25 mood right now.", "fx": {"mood_now": 25.0}, "instant": true},
 	&"night_crew": {"name": "Night Sort Crew", "rarity": 1, "kind": "company", "desc": "Sorting takes half as long.", "fx": {"sort": 0.5}},
 	&"friendly_mech": {"name": "Friendly Mechanic", "rarity": 1, "kind": "company", "desc": "Repairs and services 40% cheaper and 30% quicker.", "fx": {"shop_cost": 0.6, "shop_time": 0.7}},
-	&"loyalty": {"name": "Loyalty Cards", "rarity": 1, "kind": "company", "desc": "Walk-in share +6% in every district.", "fx": {"share_now": 0.06}, "instant": true},
+	&"loyalty": {"name": "Loyalty Cards", "rarity": 1, "kind": "company", "desc": "+6% chance that every walk-in order picks you, for good.", "fx": {"share_bonus": 0.06}},
 	&"vendor_rep": {"name": "Vendor Rep", "rarity": 2, "kind": "company", "desc": "New jobs pay +15%.", "fx": {"job_pay": 1.15}},
 	&"front_of_line": {"name": "Mechanic's Friend", "rarity": 2, "kind": "company", "desc": "Your vehicles skip to the front of the garage line.", "fx": {"front_of_line": 1}},
 	&"express_lane": {"name": "Express Lane", "rarity": 3, "kind": "company", "desc": "Every delivery promise gets +30 min.", "fx": {"promise_add": 30.0}},

@@ -6,21 +6,21 @@ extends RefCounted
 ## plain data with Godot's binary var format.
 
 const SLOTS := 3
-const VERSION := 3
+const VERSION := 4
 const OLDEST := 2      # older saves still load (as classic endless games)
 
 const PARCEL_F := ["id", "company", "house", "district", "kind", "weight", "vendor", "job_id", "pay_amount",
-	"created", "deadline", "stage", "stage_times", "van_code", "late", "window_start", "window_end", "signature", "attempts"]
+	"created", "deadline", "stage", "stage_times", "van_code", "late", "window_start", "window_end", "signature", "attempts", "paid"]
 const DRIVER_F := ["name", "traits", "home_district", "mood", "familiarity", "delivered_today",
 	"delivered_total", "late_total", "hired_day", "avatar_color"]
 const MOVER_F := ["pos", "prev_pos", "heading", "path", "path_i", "odometer"]
 const VAN_F := ["id", "number", "company", "code", "type", "slots", "max_kg", "state", "route_total", "node",
 	"target_node", "timer", "wait", "ready", "condition", "breakdowns", "shop_reason", "shop_waiting", "shop_timer",
-	"mods", "manual_order", "auto_fill", "rescue_target", "route_mult", "route_hits", "route_base", "route_clean", "boost_until"]
-const JOB_F := ["id", "vendor", "houses", "weights", "total_kg", "pay", "express", "promise", "expires", "state", "timer", "rush"]
+	"mods", "manual_order", "auto_fill", "rescue_target", "route_mult", "route_hits", "route_base", "route_clean", "boost_until", "earned_today", "cost_today"]
+const JOB_F := ["id", "vendor", "houses", "weights", "total_kg", "pay", "express", "promise", "expires", "state", "timer", "rush", "breakdown"]
 const COMPANY_F := ["money", "level", "lifetime_revenue", "auto_dispatch", "dispatch_threshold", "max_wait",
 	"auto_service", "delivered_today", "ontime_today", "delivered_total", "ontime_total", "ontime_yesterday",
-	"money_start_of_day", "revenue_today", "perks", "contract", "contract_done", "counters", "stars_total"]
+	"money_start_of_day", "revenue_today", "perks", "contract", "contract_done", "counters", "stars_total", "ledger"]
 
 
 static func path(slot: int) -> String:

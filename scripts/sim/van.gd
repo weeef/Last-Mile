@@ -51,6 +51,10 @@ var route_base := 0.0                # on-time pay earned so far on this route
 var route_clean := true              # no late parcels yet on this route
 var boost_until := -1.0              # Floor It: faster until this minute
 
+# Bookkeeping since the last evening report (for the fleet list and route sheet)
+var earned_today := 0.0
+var cost_today := 0.0
+
 
 func mod_slots() -> int:
 	return spec()["mod_slots"]

@@ -43,6 +43,36 @@ var contract_done := false
 var counters := {}               # today's tallies for contracts and the report
 var stars_total := 0
 
+# Money ledger: category -> amount since the last evening report (+ in, - out).
+var ledger := {}
+const LEDGER_LABELS := {
+	"deliveries": "Deliveries", "streak": "Streak bonus", "tips": "Tips", "combos": "Clean-run bonuses",
+	"contracts": "Contract rewards", "interest": "Savings interest", "events": "Morning events",
+	"wages": "Driver wages", "fuel": "Fuel", "repairs": "Repairs", "services": "Services", "tows": "Tows",
+	"fines": "Fines", "rent": "Rent", "vehicles": "Vehicles bought / sold", "unlocks": "Vendor partnerships",
+	"cards": "Cards, rerolls, shop", "other": "Other",
+}
+const LEDGER_ORDER := ["deliveries", "streak", "tips", "combos", "contracts", "interest", "events",
+	"wages", "fuel", "repairs", "services", "tows", "fines", "rent", "vehicles", "unlocks", "cards", "other"]
+
+
+## Every change to money goes through here so the ledger can explain it.
+func add_money(amount: float, category: String, van: Van = null) -> void:
+	money += amount
+	ledger[category] = float(ledger.get(category, 0.0)) + amount
+	if van != null:
+		if amount >= 0.0:
+			van.earned_today += amount
+		else:
+			van.cost_today -= amount
+
+
+func ledger_total() -> float:
+	var t := 0.0
+	for k in ledger.keys():
+		t += ledger[k]
+	return t
+
 
 func perk(key: String, default := 1.0) -> float:
 	var m := default

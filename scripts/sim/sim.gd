@@ -258,7 +258,7 @@ func _process_commands() -> void:
 				var spec: Dictionary = VehicleTypes.DATA[t]
 				var price := van_price(c, t)
 				if c.money >= price and c.vans.size() < c.fleet_cap() and c.level >= spec["level"]:
-					c.money -= price
+					c.add_money(-price, "vehicles")
 					var v := _add_van(c, t)
 					v.condition = rng.randf_range(0.8, 0.95)
 					if c.is_ai:
@@ -280,10 +280,12 @@ func _process_commands() -> void:
 				var v := _find_van(c, cmd["van"])
 				if v and v.state == Van.State.IDLE and v.cargo.is_empty() and c.vans.size() > 1:
 					c.vans.erase(v)
-					c.money += VehicleTypes.DATA[v.type]["cost"] * 0.4
+					c.add_money(VehicleTypes.DATA[v.type]["cost"] * 0.4, "vehicles")
 					van_removed.emit(v)
 					if c.is_ai:
 						notice.emit("Zoomer Express sold %s to cut costs" % v.code, "rival")
+					else:
+						notice.emit("Sold %s for $%d. Its wages and fuel stop now." % [v.code, int(VehicleTypes.DATA[v.type]["cost"] * 0.4)], "info")
 			"start_route":
 				var v := _find_van(c, cmd["van"])
 				if v and v.state == Van.State.LOADING and not v.cargo.is_empty():
@@ -326,6 +328,8 @@ func _process_commands() -> void:
 						p.set_stage(Parcel.Stage.SORTED, now)
 						p.van_code = ""
 						c.waiting.append(p)
+						if v.auto_fill and c.id == PLAYER:
+							notice.emit("Auto-load is off for %s so it keeps your changes" % v.code, "info")
 						v.auto_fill = false
 			"set_auto_fill":
 				var v := _find_van(c, cmd["van"])
@@ -359,7 +363,7 @@ func _process_commands() -> void:
 				var vi: int = cmd["vendor"]
 				var vd := Vendors.get_vendor(vi)
 				if not c.vendors_unlocked.has(vi) and c.level >= vd["level"] and c.money >= vd["unlock"]:
-					c.money -= vd["unlock"]
+					c.add_money(-vd["unlock"], "unlocks")
 					c.vendors_unlocked[vi] = true
 					notice.emit("New partner: %s now posts jobs on your board" % vd["name"], "good")
 					_refill_job_board(now)
@@ -378,7 +382,7 @@ func _process_commands() -> void:
 					_after_draft()
 			"skip_card":
 				if phase == Phase.EVENING and c.id == PLAYER and evening_stage in ["draft", "relic"]:
-					c.money += 100.0 if evening_stage == "relic" else 40.0
+					c.add_money(100.0 if evening_stage == "relic" else 40.0, "cards")
 					_after_draft()
 			"shop_buy":
 				if phase == Phase.EVENING and c.id == PLAYER and evening_stage == "shop":
@@ -388,7 +392,7 @@ func _process_commands() -> void:
 						if Cards.is_vehicle(id) and _find_van(c, cmd.get("van", -1)) == null:
 							pass
 						else:
-							c.money -= shop[i]["price"]
+							c.add_money(-shop[i]["price"], "cards")
 							shop[i]["sold"] = true
 							_apply_card(c, id, cmd.get("van", -1))
 							event.emit("shop_changed", {"bought": id})
@@ -399,7 +403,7 @@ func _process_commands() -> void:
 				if phase == Phase.EVENING and c.id == PLAYER and evening_stage == "shop":
 					var cost := shop_reroll_cost()
 					if c.money >= cost:
-						c.money -= cost
+						c.add_money(-cost, "cards")
 						shop_rerolls += 1
 						_open_shop(c)
 						event.emit("shop_changed", {})
@@ -416,7 +420,7 @@ func _process_commands() -> void:
 				if phase == Phase.EVENING and c.id == PLAYER and evening_stage == "draft":
 					var cost := reroll_cost()
 					if c.money >= cost:
-						c.money -= cost
+						c.add_money(-cost, "cards")
 						draft_rerolls += 1
 						_roll_draft(c, report.get("draft_count", 3), report.get("boost", 0), report.get("min_rarity", 0))
 						event.emit("draft_rerolled", {})
@@ -537,14 +541,14 @@ func _shop_service(c: Company, service: String) -> void:
 			var cost := SHOP_TUNEUP_PER_VAN * c.vans.size()
 			if c.money < cost:
 				return
-			c.money -= cost
+			c.add_money(-cost, "services")
 			for v in c.vans:
 				v.condition = maxf(v.condition, 1.0 if v.state in [Van.State.IDLE, Van.State.LOADING] else v.condition)
 			notice.emit("The whole fleet gets a tune-up", "good")
 		"hustle":
 			if c.money < SHOP_HUSTLE or hustle >= hustle_cap():
 				return
-			c.money -= SHOP_HUSTLE
+			c.add_money(-SHOP_HUSTLE, "cards")
 			hustle = hustle_cap()
 			notice.emit("Hustle topped up", "good")
 		_:
@@ -659,7 +663,7 @@ func _settle_lease(p: Company) -> Dictionary:
 	var amount := lease_amount()
 	var out := {"due": true, "amount": amount, "paid": false, "strike": false, "evicted": false, "won": false}
 	if p.money >= amount:
-		p.money -= amount
+		p.add_money(-amount, "rent")
 		lease_debt = 0.0
 		run_stats["leases_paid"] += 1
 		out["paid"] = true
@@ -667,7 +671,7 @@ func _settle_lease(p: Company) -> Dictionary:
 	elif day() < Season.DAYS and lease_strikes < strikes_allowed():
 		# Final notice: pay what you can, the rest (plus a late fee) rolls into next week.
 		var part := maxf(p.money, 0.0)
-		p.money -= part
+		p.add_money(-part, "rent")
 		lease_strikes += 1
 		lease_debt = (amount - part) * Season.LATE_FEE
 		out["strike"] = true
@@ -763,12 +767,12 @@ func _begin_evening() -> void:
 	var tier: Dictionary = Contracts.TIERS[p.contract.get("tier", 0)] if done else {"draft_count": 3, "boost": 0, "min_rarity": 0}
 	var reward: float = p.contract.get("reward", 0.0) if done else 0.0
 	if done:
-		p.money += reward
+		p.add_money(reward, "contracts")
 	# Savings interest: $5 for every $100 in the till, capped. Saving vs. spending.
 	var interest := 0.0
 	if season_on() and p.money > 0.0:
 		interest = minf(floorf(p.money / 100.0) * 5.0, 25.0 + p.perk_add("interest_cap"))
-		p.money += interest
+		p.add_money(interest, "interest")
 	var lease := {}
 	if season_on() and day() % Season.WEEK_DAYS == 0:
 		lease = _settle_lease(p)
@@ -781,6 +785,16 @@ func _begin_evening() -> void:
 		"failed_attempts": p.counters.get("not_home", 0), "breakdowns": p.counters.get("breakdowns", 0),
 		"interest": interest, "lease": lease, "twist": twist, "streak": streak,
 	}
+	# Money in and out since the last report, then start a fresh page.
+	report["ledger"] = p.ledger.duplicate()
+	report["net"] = p.ledger_total()
+	var per_van: Array = []
+	for v in p.vans:
+		per_van.append({"code": v.code, "earned": v.earned_today, "cost": v.cost_today})
+		v.earned_today = 0.0
+		v.cost_today = 0.0
+	report["vans"] = per_van
+	p.ledger = {}
 	draft_rerolls = 0
 	city.set_closures([])
 	if lease.get("evicted", false) or lease.get("won", false):
@@ -918,7 +932,8 @@ func _assign_window(c: Company, p: Parcel, now: float) -> void:
 func _spawn_walk_in(now: float) -> void:
 	var hid := rng.randi_range(0, city.houses.size() - 1)
 	var d: int = city.houses[hid]["district"]
-	var cid := PLAYER if rng.randf() < share[d] * (0.6 if twist == "blitz" else 1.0) else RIVAL
+	var odds := clampf(share[d] + companies[PLAYER].perk_add("share_bonus"), 0.0, 0.9) * (0.6 if twist == "blitz" else 1.0)
+	var cid := PLAYER if rng.randf() < odds else RIVAL
 	var c := companies[cid]
 	var p := _new_parcel(c, hid, now)
 	var express_odds := 0.35 if twist == "viral" else 0.2
@@ -987,14 +1002,13 @@ func _make_job(vi: int, now: float, rush := false) -> Job:
 	j.promise = 60.0 if rush else (75.0 if j.express else 170.0)
 	# Pay: a base fee, plus per stop, per kilogram and for distance from the depot.
 	var avg_dist := dist_sum / stops
-	var raw := 10.0 + stops * 6.0 + j.total_kg * 0.32 + avg_dist * 0.12 * stops
-	if j.needs_liftgate():
-		raw += 25.0
-	if j.express:
-		raw *= 1.3
-	if rush:
-		raw *= 1.8
-	j.pay = roundf(raw * vd["mult"] * 0.85 * companies[PLAYER].perk("job_pay"))
+	var b := {"base": 10.0, "stops": stops * 6.0, "weight": j.total_kg * 0.32, "distance": avg_dist * 0.12 * stops,
+		"liftgate": 25.0 if j.needs_liftgate() else 0.0, "express": 1.3 if j.express else 1.0, "rush": 1.8 if rush else 1.0,
+		"vendor": float(vd["mult"]) * 0.85, "perk": companies[PLAYER].perk("job_pay")}
+	var raw: float = b["base"] + b["stops"] + b["weight"] + b["distance"] + b["liftgate"]
+	j.pay = roundf(raw * b["express"] * b["rush"] * b["vendor"] * b["perk"])
+	b["prep"] = float(vd["prep"]) * (0.5 if rush else 1.0)
+	j.breakdown = b
 	j.expires = now + (20.0 if rush else OFFER_LIFETIME + rng.randf_range(0.0, 60.0))
 	j.pos = city.node_pos(city.vendor_lots[vi]["curb"])
 	j.prev_pos = j.pos
@@ -1155,7 +1169,7 @@ func _step_van(c: Company, v: Van, now: float) -> void:
 				v.node = v.target_node
 				v.state = Van.State.DELIVERING
 				var p := v.cargo[0]
-				v.timer = Van.STOP_MINUTES * v.spec()["stop"] * v.fx("stop") * v.driver.stop_mult(p.district) * (1.6 if p.signature else 1.0)
+				v.timer = stop_minutes(v, p)
 				if c.id == PLAYER and v.cargo.size() == v.route_total and c.has_perk_fx("first_stop_free"):
 					v.timer = 0.05
 		Van.State.DELIVERING:
@@ -1343,7 +1357,7 @@ func _resolve_event(c: Company, i: int) -> void:
 	var cost := Events.cost(id, i, c.vans.size())
 	if c.money < cost:
 		return
-	c.money -= cost
+	c.add_money(-cost, "events")
 	var result := ""
 	match id + ":" + str(i):
 		"used_van:0":
@@ -1353,7 +1367,7 @@ func _resolve_event(c: Company, i: int) -> void:
 				run_stats["max_fleet"] = maxi(run_stats["max_fleet"], c.vans.size())
 				result = "%s joins the team in a rattly van." % v.driver.name
 			else:
-				c.money += cost
+				c.add_money(cost, "events")
 				result = "No room in the fleet. Del shrugs and leaves."
 		"raise:0":
 			for v in c.vans:
@@ -1379,7 +1393,7 @@ func _resolve_event(c: Company, i: int) -> void:
 		"card_trader:0", "card_trader:1":
 			var picks := Cards.roll(rng, 1, 0, c.perks, true, 2 if i == 0 else 0, season_on())
 			if picks.is_empty():
-				c.money += cost
+				c.add_money(cost, "events")
 				result = "The binder is empty."
 			else:
 				var target := c.vans[0]
@@ -1408,12 +1422,12 @@ func _resolve_event(c: Company, i: int) -> void:
 				result = "Nothing parked to sell."
 			else:
 				c.vans.erase(worst)
-				c.money += VehicleTypes.DATA[worst.type]["cost"] * 0.9
+				c.add_money(VehicleTypes.DATA[worst.type]["cost"] * 0.9, "vehicles")
 				van_removed.emit(worst)
 				result = "Sold %s to Zoomer for %s." % [worst.code, "$%d" % int(VehicleTypes.DATA[worst.type]["cost"] * 0.9)]
 		"gambler:0":
 			if rng.randf() < 0.5:
-				c.money += 2.0 * cost
+				c.add_money(2.0 * cost, "events")
 				result = "Heads! You win $100."
 			else:
 				result = "Tails. There goes $100."
@@ -1498,7 +1512,7 @@ func _cash_route(c: Company, v: Van) -> void:
 			if v.route_hits.size() >= 3 and c.has_perk_fx("combo_double"):
 				bonus *= 2.0
 			bonus = roundf(bonus)
-			c.money += bonus
+			c.add_money(bonus, "combos", v)
 			c.revenue_today += bonus
 			c.lifetime_revenue += bonus
 			c.count("revenue", bonus)
@@ -1526,6 +1540,7 @@ func _not_home(c: Company, v: Van, p: Parcel) -> void:
 	_mood(v, -1.0)
 	if c.id == PLAYER:
 		c.count("not_home")
+		notice.emit("Nobody home at %s (home %s). The parcel rides back to the depot for another try." % [city.houses[p.house]["address"], p.window_text()], "info")
 		if not c.has_perk_fx("streak_guard"):
 			_break_streak(c, "not_home")
 	event.emit("not_home", {"parcel": p, "van": v})
@@ -1541,24 +1556,46 @@ func _deliver(c: Company, v: Van, p: Parcel, now: float) -> void:
 	if c.id == PLAYER and today_type == "rush":
 		base *= 1.25
 	var pay := base * (0.3 if p.late else 1.0)
+	var booked := false
 	if c.id == PLAYER:
 		if p.late:
 			v.route_clean = false
 			_break_streak(c, "late")
+			var fine := 0.0
 			if boss_rule() == "mayor":
 				pay = 0.0
 			if twist == "inspector":
-				pay = -10.0
+				fine = 10.0
 			if boss_rule() == "streamqueen":
-				pay = -15.0
+				fine = 15.0
+			if fine > 0.0:
+				pay = 0.0
+				c.add_money(-fine, "fines", v)
+				pay = -fine
+			else:
+				c.add_money(pay, "deliveries", v)
+			booked = true
 		else:
 			v.route_base += pay
 			_gain_hustle(1 + int(c.perk_add("hustle_per_drop")))
-			pay = pay * streak_mult() + _bump_streak(c)
+			var plain := pay
+			var mult := streak_mult()
+			var tip := _bump_streak(c)
+			if v.driver.has(&"chatty"):
+				tip += 3.0                     # customers love a chat
 			if c.has_perk_fx("golden_ticket") and (c.ontime_total + 1) % 10 == 0:
-				pay += 40.0
+				tip += 40.0
 				notice.emit("Golden ticket! +$40", "streak")
-	c.money += pay
+			c.add_money(plain, "deliveries", v)
+			if mult > 1.0:
+				c.add_money(plain * (mult - 1.0), "streak", v)
+			if tip > 0.0:
+				c.add_money(tip, "tips", v)
+			pay = plain * mult + tip
+			booked = true
+	if not booked:
+		c.add_money(pay, "deliveries", v)
+	p.paid = pay
 	c.revenue_today += pay
 	c.lifetime_revenue += pay
 	c.delivered_today += 1
@@ -1594,8 +1631,7 @@ func _deliver(c: Company, v: Van, p: Parcel, now: float) -> void:
 		if not p.late:
 			var window := maxf(1.0, p.deadline - p.stage_times[Parcel.Stage.PLACED])
 			result = 0.6 + 0.4 * clampf((p.deadline - now) / window, 0.0, 1.0)
-		var bonus := 0.01 if (d.has(&"chatty") and not p.late) else 0.0
-		_bump_score(p.district, c.id, result, bonus)
+		_bump_score(p.district, c.id, result, 0.0)
 	active.erase(p)
 	recent.push_front(p)
 	if recent.size() > 60:
@@ -1612,7 +1648,7 @@ func _check_level(c: Company) -> void:
 	if nxt.is_empty() or c.lifetime_revenue < nxt["revenue"]:
 		return
 	c.level += 1
-	notice.emit("Level up! You're now %s. Fleet cap %d." % [nxt["name"], nxt["fleet"]], "good")
+	notice.emit("Level up! You're now %s. Unlocked: %s" % [nxt["name"], ", ".join(Vendors.level_unlocks(c.level))], "good")
 	event.emit("level_up", {"level": c.level})
 
 
@@ -1636,7 +1672,7 @@ func estimate_route(v: Van, order: Array, start_node: int, start_time: float) ->
 		elif t > p.deadline:
 			status = "late"
 		stops.append({"parcel": p, "arrive": t, "status": status})
-		t += Van.STOP_MINUTES * v.spec()["stop"] * v.fx("stop") * v.driver.stop_mult(p.district) * (1.6 if p.signature else 1.0)
+		t += stop_minutes(v, p)
 		at = curb
 	var back: float = t + city.road_dist(at, companies[v.company].depot_node) / spd * MIN_PER_TICK
 	return {"stops": stops, "return": back}
@@ -1677,16 +1713,22 @@ func _break_down(c: Company, v: Van, _now: float) -> void:
 	if c.is_ai:
 		notice.emit("Zoomer's %s broke down. Their parcels are stuck." % v.code, "rival")
 	else:
+		var bill := TOW_COST * (0.0 if c.has_perk_fx("tow") else 1.0) + REPAIR_COST * c.perk("shop_cost")
+		var why := "worn to %d%% condition" % int(v.condition * 100)
 		if v.cargo.is_empty():
-			notice.emit("%s broke down %s. Tow truck on the way." % [v.code, where], "bad")
+			notice.emit("%s broke down %s (%s). Tow + repair will cost about %s." % [v.code, where, why, "$%d" % int(bill)], "bad")
 		else:
-			notice.emit("%s broke down %s with %d parcels! Send a rescue or wait for the tow." % [v.code, where, v.cargo.size()], "bad")
+			notice.emit("%s broke down %s (%s) with %d parcels! Send a rescue before the tow takes them back. Tow + repair about %s." % [v.code, where, why, v.cargo.size(), "$%d" % int(bill)], "bad")
 	event.emit("breakdown", {"van": v})
 
 
 func _start_tow(c: Company, v: Van, now: float) -> void:
 	if not c.has_perk_fx("tow"):
-		c.money -= TOW_COST
+		c.add_money(-TOW_COST, "tows", v)
+		if not c.is_ai:
+			notice.emit("Tow truck hauls %s to Gearbox Garage: -$%d" % [v.code, int(TOW_COST)], "bad")
+	if not c.is_ai and not v.cargo.is_empty():
+		notice.emit("The tow brings %s's %d parcels back to the depot to be sent again" % [v.code, v.cargo.size()], "info")
 	# The tow crew brings any parcels still aboard back to the depot.
 	for p in v.cargo:
 		p.set_stage(Parcel.Stage.SORTED, now)
@@ -1738,12 +1780,13 @@ func _step_garage(_now: float) -> void:
 		if v.shop_timer <= 0.0:
 			garage_working.remove_at(i)
 			var c := companies[v.company]
-			c.money -= (REPAIR_COST if v.shop_reason == "repair" else SERVICE_COST) * c.perk("shop_cost")
+			var bill: float = (REPAIR_COST if v.shop_reason == "repair" else SERVICE_COST) * c.perk("shop_cost")
+			c.add_money(-bill, "repairs" if v.shop_reason == "repair" else "services", v)
 			v.condition = 0.95 if v.shop_reason == "repair" else 1.0
 			v.set_path(city.path(city.garage["node"], c.depot_node))
 			v.state = Van.State.RETURNING
 			if not c.is_ai:
-				notice.emit("%s is fixed up and heading back to the depot" % v.code, "good")
+				notice.emit("%s %s: -$%d. Condition back to %d%%, heading to the depot" % [v.code, "repaired" if v.shop_reason == "repair" else "serviced", int(bill), int(v.condition * 100)], "good")
 		else:
 			i += 1
 
@@ -1752,12 +1795,67 @@ func garage_position(v: Van) -> int:
 	return garage_queue.find(v)
 
 
+# ---------------------------------------------------------------- numbers for the UI
+
+const TICKS_PER_HOUR := 60.0 / MIN_PER_TICK
+
+
+func fuel_mult(c: Company, v: Van) -> float:
+	return v.spec()["fuel"] * v.fx("fuel") * c.perk("fuel")
+
+
+## Hourly running costs and wear for a vehicle, at normal traffic.
+func running_costs(v: Van) -> Dictionary:
+	var c := companies[v.company]
+	var wage_drive := Van.WAGE_PER_MIN * 60.0 * c.perk("wage")
+	var units: float = Van.BASE_SPEED * v.spec()["speed"] * v.fx("speed") * TICKS_PER_HOUR
+	var fuel: float = units * Van.FUEL_PER_UNIT * fuel_mult(c, v)
+	return {
+		"wage_drive": wage_drive, "wage_parked": wage_drive * 0.25, "fuel": fuel,
+		"drive": wage_drive + fuel, "wear": units * Van.WEAR_PER_UNIT * v.spec()["wear"] * v.fx("wear") * v.driver.wear_mult(),
+	}
+
+
+## Chance of breaking down during one hour of driving (0..1).
+func breakdown_risk(v: Van, condition := -1.0) -> float:
+	var worn := 1.0 - (v.condition if condition < 0.0 else condition)
+	var p := BREAK_BASE * worn * worn * (0.4 if v.driver.has(&"gearhead") else 1.0) * v.fx("break") * (1.5 if weather == 1 else 1.0)
+	if v.company == PLAYER:
+		if twist == "heatwave":
+			p *= 1.6
+		if heat() >= 7:
+			p *= 1.5
+	return 1.0 - pow(1.0 - p, TICKS_PER_HOUR)
+
+
+## Minutes a drop-off takes for this vehicle and parcel.
+func stop_minutes(v: Van, p: Parcel) -> float:
+	return Van.STOP_MINUTES * v.spec()["stop"] * v.fx("stop") * v.driver.stop_mult(p.district) \
+		* (1.6 if p.signature else 1.0) * (1.15 if weather == 2 else 1.0)
+
+
+## "Bay 1 of 2", or the queue position and who is ahead.
+func garage_status(v: Van) -> String:
+	if garage_working.has(v):
+		return "in a bay, %d min left" % ceili(v.shop_timer)
+	var i := garage_queue.find(v)
+	if i < 0:
+		return ""
+	var ahead: Array = []
+	for k in i:
+		ahead.append(garage_queue[k].code)
+	return "%s in line for %d bays%s" % [["1st", "2nd", "3rd", "4th", "5th"][mini(i, 4)], GARAGE_BAYS,
+		(", behind " + ", ".join(ahead)) if not ahead.is_empty() else ""]
+
+
 func _pay_costs(c: Company) -> void:
 	for v in c.vans:
 		var wage := Van.WAGE_PER_MIN * (0.25 if v.state in [Van.State.IDLE, Van.State.AT_SHOP] else 1.0) * c.perk("wage")
-		c.money -= wage * MIN_PER_TICK
+		c.add_money(-wage * MIN_PER_TICK, "wages", v)
 		if v.state != Van.State.TOWING:
-			c.money -= v.pos.distance_to(v.prev_pos) * Van.FUEL_PER_UNIT * v.spec()["fuel"] * v.fx("fuel") * c.perk("fuel")
+			var burn := v.pos.distance_to(v.prev_pos) * Van.FUEL_PER_UNIT * fuel_mult(c, v)
+			if burn > 0.0:
+				c.add_money(-burn, "fuel", v)
 
 
 func _bump_score(district: int, cid: int, result: float, bonus: float) -> void:

@@ -4,7 +4,7 @@ extends RefCounted
 
 const DATA := {
 	&"lead_foot": {"name": "Lead Foot", "desc": "Drives 25% faster", "color": Color("b5483a")},
-	&"chatty": {"name": "Chatty", "desc": "Customers love them, but stops take longer", "color": Color("c98a1e")},
+	&"chatty": {"name": "Chatty", "desc": "Stops take 50% longer, but every on-time drop earns a $3 tip", "color": Color("c98a1e")},
 	&"organized": {"name": "Organized", "desc": "Drop-offs are 25% quicker", "color": Color("3f8577")},
 	&"rookie": {"name": "Rookie", "desc": "A little slow, but learns routes twice as fast", "color": Color("2f5f86")},
 	&"night_owl": {"name": "Night Owl", "desc": "Faster after 6pm, sluggish before 9am", "color": Color("6c5796")},

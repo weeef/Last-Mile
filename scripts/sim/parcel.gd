@@ -28,6 +28,7 @@ var window_start := -1.0
 var window_end := -1.0
 var signature := false
 var attempts := 0
+var paid := 0.0           # what the drop actually paid (after late cut, streak, tips, fines)
 
 
 func set_stage(s: Stage, minute: float) -> void:
@@ -51,7 +52,7 @@ func window_text() -> String:
 	if window_start > 0.0:
 		return "after " + Sim.clock(window_start)
 	if window_end > 0.0:
-		return "before " + Sim.clock(window_end)
+		return "due by " + Sim.clock(window_end)
 	return ""
 
 
