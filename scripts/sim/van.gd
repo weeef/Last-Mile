@@ -2,9 +2,9 @@ class_name Van
 extends Mover
 ## A delivery vehicle (van, box truck or sprinter) and its state machine.
 
-enum State { IDLE, LOADING, EN_ROUTE, DELIVERING, RETURNING, BROKEN, TOWING, TO_SHOP, AT_SHOP }
+enum State { IDLE, LOADING, EN_ROUTE, DELIVERING, RETURNING, BROKEN, TOWING, TO_SHOP, AT_SHOP, RESCUE }
 const STATE_NAMES := ["Parked", "Loading", "En route", "Dropping off", "Returning",
-	"Broken down", "Being towed", "To mechanic", "In the shop"]
+	"Broken down", "Being towed", "To mechanic", "In the shop", "Rescue run"]
 
 const BASE_SPEED := 0.55        # world units per tick
 const LOAD_MINUTES := 0.5       # per parcel
@@ -37,6 +37,46 @@ var shop_reason := ""           # "repair" or "service"
 var shop_waiting := false
 var shop_timer := 0.0
 
+# Player control + roguelike mods
+var mods: Array[StringName] = []    # installed vehicle cards
+var manual_order := false            # route order set by the player
+var auto_fill := true                # keep loading automatically at the depot
+var returns: Array[Parcel] = []      # "nobody home" parcels riding back to the depot
+var rescue_target := -1              # van id we're driving to rescue
+
+
+func mod_slots() -> int:
+	return spec()["mod_slots"]
+
+
+func fx(key: String, default := 1.0) -> float:
+	var m := default
+	for id in mods:
+		var f: Dictionary = Cards.DATA[id]["fx"]
+		if f.has(key):
+			if key == "slots":
+				m += f[key]
+			else:
+				m *= f[key]
+	return m
+
+
+func fx_has(key: String) -> bool:
+	for id in mods:
+		if Cards.DATA[id]["fx"].has(key):
+			return true
+	return false
+
+
+func carries_heavy() -> bool:
+	return spec()["heavy"] or fx_has("heavy")
+
+
+## Recomputes capacity after installing mods.
+func refresh_stats() -> void:
+	slots = int(round((spec()["slots"] + fx("slots", 0.0)) * fx("slots_mult")))
+	max_kg = spec()["kg"] * fx("kg")
+
 
 func spec() -> Dictionary:
 	return VehicleTypes.DATA[type]
@@ -68,7 +108,7 @@ func load_kg() -> float:
 func can_fit(p: Parcel) -> bool:
 	if cargo.size() >= slots:
 		return false
-	if p.heavy() and not spec()["heavy"]:
+	if p.heavy() and not carries_heavy():
 		return false
 	return load_kg() + p.weight <= max_kg
 

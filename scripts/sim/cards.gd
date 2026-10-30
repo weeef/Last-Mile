@@ -1,0 +1,91 @@
+class_name Cards
+extends RefCounted
+## Upgrade cards drafted each evening. Vehicle mods go on one vehicle (limited
+## slots, so you build specialists); company perks apply to the whole business.
+##
+## fx keys (multipliers unless noted):
+##   speed, fuel, wear, break, stop, kg, slots (+add), slots_mult, express_pay,
+##   heavy (flag), mood_lock (flag), gps (speed on 5+ stop routes)
+##   company: fuel, tow (flag), sort, shop_cost, shop_time, job_pay, front_of_line (flag),
+##   promise_add (+minutes), mood_now (+instant), share_now (+instant)
+
+enum Rarity { COMMON, UNCOMMON, RARE, ULTRA }
+const RARITY_NAMES := ["Common", "Uncommon", "Rare", "Ultra rare"]
+const RARITY_COLORS := [Color("8a8170"), Color("4f7a46"), Color("2f5f86"), Color("d17a22")]
+const RARITY_WEIGHTS := [60.0, 28.0, 10.0, 2.0]
+
+const DATA := {
+	# ---- vehicle mods
+	&"eco_tune": {"name": "Eco Tune", "rarity": 0, "kind": "vehicle", "desc": "Fuel use −30%.", "fx": {"fuel": 0.7}},
+	&"roof_rack": {"name": "Roof Rack", "rarity": 0, "kind": "vehicle", "desc": "+2 parcel slots.", "fx": {"slots": 2}},
+	&"stiff_springs": {"name": "Heavy-Duty Springs", "rarity": 0, "kind": "vehicle", "desc": "Max load +30%.", "fx": {"kg": 1.3}},
+	&"fresh_tires": {"name": "Fresh Tires", "rarity": 0, "kind": "vehicle", "desc": "Wears out 30% slower.", "fx": {"wear": 0.7}},
+	&"quick_shelves": {"name": "Quick-Release Shelving", "rarity": 1, "kind": "vehicle", "desc": "Drop-offs 25% faster.", "fx": {"stop": 0.75}},
+	&"reinforced": {"name": "Reinforced Drivetrain", "rarity": 1, "kind": "vehicle", "desc": "Breakdown chance −60%.", "fx": {"break": 0.4}},
+	&"hybrid": {"name": "Hybrid Engine", "rarity": 1, "kind": "vehicle", "desc": "Fuel use −60%, speed −5%.", "fx": {"fuel": 0.4, "speed": 0.95}},
+	&"route_gps": {"name": "Route GPS", "rarity": 1, "kind": "vehicle", "desc": "+12% speed on routes with 5+ stops.", "fx": {"gps": 1.12}},
+	&"insulated": {"name": "Insulated Cargo", "rarity": 1, "kind": "vehicle", "desc": "Express parcels pay +30%.", "fx": {"express_pay": 1.3}},
+	&"cargo_tetris": {"name": "Cargo Tetris", "rarity": 2, "kind": "vehicle", "desc": "+40% slots and max load.", "fx": {"slots_mult": 1.4, "kg": 1.4}},
+	&"liftgate_kit": {"name": "Liftgate Kit", "rarity": 2, "kind": "vehicle", "desc": "Can haul heavy freight.", "fx": {"heavy": 1}},
+	&"hypermiler": {"name": "Hypermiler", "rarity": 2, "kind": "vehicle", "desc": "No fuel cost and +5% speed.", "fx": {"fuel": 0.0, "speed": 1.05}},
+	&"comfy_cab": {"name": "Comfy Cab", "rarity": 2, "kind": "vehicle", "desc": "Driver's mood never drops.", "fx": {"mood_lock": 1}},
+	&"turbo": {"name": "Turbo", "rarity": 3, "kind": "vehicle", "desc": "+45% speed. Wears out 30% faster.", "fx": {"speed": 1.45, "wear": 1.3}},
+	&"golden_wrench": {"name": "Golden Wrench", "rarity": 3, "kind": "vehicle", "desc": "Never breaks down.", "fx": {"break": 0.0}},
+	# ---- company perks
+	&"bulk_fuel": {"name": "Bulk Fuel Deal", "rarity": 0, "kind": "company", "desc": "All fuel −15%.", "fx": {"fuel": 0.85}},
+	&"tow_club": {"name": "Tow Club", "rarity": 0, "kind": "company", "desc": "Tows are free and arrive twice as fast.", "fx": {"tow": 1}},
+	&"pizza_friday": {"name": "Pizza Friday", "rarity": 0, "kind": "company", "desc": "Every driver +25 mood right now.", "fx": {"mood_now": 25.0}, "instant": true},
+	&"night_crew": {"name": "Night Sort Crew", "rarity": 1, "kind": "company", "desc": "Sorting takes half as long.", "fx": {"sort": 0.5}},
+	&"friendly_mech": {"name": "Friendly Mechanic", "rarity": 1, "kind": "company", "desc": "Repairs and services 40% cheaper and 30% quicker.", "fx": {"shop_cost": 0.6, "shop_time": 0.7}},
+	&"loyalty": {"name": "Loyalty Cards", "rarity": 1, "kind": "company", "desc": "Walk-in share +6% in every district.", "fx": {"share_now": 0.06}, "instant": true},
+	&"vendor_rep": {"name": "Vendor Rep", "rarity": 2, "kind": "company", "desc": "New jobs pay +15%.", "fx": {"job_pay": 1.15}},
+	&"front_of_line": {"name": "Mechanic's Friend", "rarity": 2, "kind": "company", "desc": "Your vehicles skip to the front of the garage line.", "fx": {"front_of_line": 1}},
+	&"express_lane": {"name": "Express Lane", "rarity": 3, "kind": "company", "desc": "Every delivery promise gets +30 min.", "fx": {"promise_add": 30.0}},
+}
+
+
+static func get_card(id: StringName) -> Dictionary:
+	return DATA[id]
+
+
+static func is_vehicle(id: StringName) -> bool:
+	return DATA[id]["kind"] == "vehicle"
+
+
+## Rolls `count` distinct cards. `boost` shifts odds toward rarer cards.
+static func roll(rng: RandomNumberGenerator, count: int, boost: int, owned_perks: Array, has_vehicles: bool, min_rarity := 0) -> Array:
+	var weights: Array = RARITY_WEIGHTS.duplicate()
+	for b in boost:
+		weights[0] *= 0.6
+		weights[1] *= 1.2
+		weights[2] *= 1.8
+		weights[3] *= 2.0
+	var out: Array = []
+	var tries := 0
+	while out.size() < count and tries < 200:
+		tries += 1
+		var total := 0.0
+		for r in range(min_rarity, 4):
+			total += weights[r]
+		var x := rng.randf() * total
+		var rarity := min_rarity
+		for r in range(min_rarity, 4):
+			x -= weights[r]
+			if x <= 0.0:
+				rarity = r
+				break
+		var pool: Array = []
+		for id in DATA.keys():
+			var c: Dictionary = DATA[id]
+			if c["rarity"] != rarity or out.has(id):
+				continue
+			if c["kind"] == "vehicle" and not has_vehicles:
+				continue
+			if c["kind"] == "company" and not c.get("instant", false) and owned_perks.has(id):
+				continue
+			pool.append(id)
+		if pool.is_empty():
+			continue
+		pool.sort()   # stable order -> deterministic pick
+		out.append(pool[rng.randi_range(0, pool.size() - 1)])
+	return out

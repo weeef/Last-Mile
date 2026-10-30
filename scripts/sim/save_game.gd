@@ -6,19 +6,20 @@ extends RefCounted
 ## plain data with Godot's binary var format.
 
 const SLOTS := 3
-const VERSION := 1
+const VERSION := 2
 
 const PARCEL_F := ["id", "company", "house", "district", "kind", "weight", "vendor", "job_id", "pay_amount",
-	"created", "deadline", "stage", "stage_times", "van_code", "late"]
+	"created", "deadline", "stage", "stage_times", "van_code", "late", "window_start", "window_end", "signature", "attempts"]
 const DRIVER_F := ["name", "traits", "home_district", "mood", "familiarity", "delivered_today",
 	"delivered_total", "late_total", "hired_day", "avatar_color"]
 const MOVER_F := ["pos", "prev_pos", "heading", "path", "path_i", "odometer"]
 const VAN_F := ["id", "number", "company", "code", "type", "slots", "max_kg", "state", "route_total", "node",
-	"target_node", "timer", "wait", "ready", "condition", "breakdowns", "shop_reason", "shop_waiting", "shop_timer"]
-const JOB_F := ["id", "vendor", "houses", "weights", "total_kg", "pay", "express", "promise", "expires", "state", "timer"]
+	"target_node", "timer", "wait", "ready", "condition", "breakdowns", "shop_reason", "shop_waiting", "shop_timer",
+	"mods", "manual_order", "auto_fill", "rescue_target"]
+const JOB_F := ["id", "vendor", "houses", "weights", "total_kg", "pay", "express", "promise", "expires", "state", "timer", "rush"]
 const COMPANY_F := ["money", "level", "lifetime_revenue", "auto_dispatch", "dispatch_threshold", "max_wait",
 	"auto_service", "delivered_today", "ontime_today", "delivered_total", "ontime_total", "ontime_yesterday",
-	"money_start_of_day", "revenue_today"]
+	"money_start_of_day", "revenue_today", "perks", "contract", "contract_done", "counters", "stars_total"]
 
 
 static func path(slot: int) -> String:
@@ -76,6 +77,13 @@ static func save(sim: Sim, slot: int) -> bool:
 		"garage_queue": sim.garage_queue.map(func(v): return v.id),
 		"active": sim.active.map(func(x): return x.id),
 		"recent": sim.recent.map(func(x): return x.id),
+		"phase": sim.phase,
+		"weather": sim.weather,
+		"closures": sim.city.closures.duplicate(true),
+		"contract_offers": sim.contract_offers.duplicate(true),
+		"draft": sim.draft.duplicate(),
+		"draft_rerolls": sim.draft_rerolls,
+		"report": sim.report.duplicate(true),
 	}
 	# Every parcel the sim still knows about, stored once and referenced by id.
 	var parcels := {}
@@ -95,7 +103,10 @@ static func save(sim: Sim, slot: int) -> bool:
 			vd.merge(_pack(v, MOVER_F))
 			vd["driver"] = _pack(v.driver, DRIVER_F)
 			vd["cargo"] = v.cargo.map(func(x): return x.id)
+			vd["returns"] = v.returns.map(func(x): return x.id)
 			for x in v.cargo:
+				parcels[x.id] = _pack(x, PARCEL_F)
+			for x in v.returns:
 				parcels[x.id] = _pack(x, PARCEL_F)
 			vans.append(vd)
 		cd["vans"] = vans
@@ -137,6 +148,13 @@ static func load_slot(slot: int) -> Sim:
 	sim.score = d["score"]
 	sim.last_day = d["last_day"]
 	sim.commands.assign(d["commands"])
+	sim.phase = d["phase"]
+	sim.weather = d["weather"]
+	sim.city.set_closures(d["closures"])
+	sim.contract_offers = d["contract_offers"]
+	sim.draft = d["draft"]
+	sim.draft_rerolls = d["draft_rerolls"]
+	sim.report = d["report"]
 
 	var parcels := {}
 	for id in d["parcels"].keys():
@@ -170,6 +188,7 @@ static func load_slot(slot: int) -> Sim:
 			v.driver = Driver.new()
 			_unpack(v.driver, vd["driver"], DRIVER_F)
 			v.cargo.assign(pick.call(vd["cargo"]))
+			v.returns.assign(pick.call(vd.get("returns", [])))
 			c.vans.append(v)
 			vans_by_id[v.id] = v
 		c.jobs.clear()

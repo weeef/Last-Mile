@@ -36,6 +36,36 @@ var ontime_yesterday := -1.0
 var money_start_of_day := 0.0
 var revenue_today := 0.0
 
+# Roguelike layer
+var perks: Array[StringName] = []
+var contract := {}               # today's chosen contract
+var contract_done := false
+var counters := {}               # today's tallies for contracts and the report
+var stars_total := 0
+
+
+func perk(key: String, default := 1.0) -> float:
+	var m := default
+	for id in perks:
+		var f: Dictionary = Cards.DATA[id]["fx"]
+		if f.has(key):
+			if key == "promise_add":
+				m += f[key]
+			else:
+				m *= f[key]
+	return m
+
+
+func has_perk_fx(key: String) -> bool:
+	for id in perks:
+		if Cards.DATA[id]["fx"].has(key):
+			return true
+	return false
+
+
+func count(key: String, amount := 1.0) -> void:
+	counters[key] = counters.get(key, 0) + amount
+
 
 func level_info() -> Dictionary:
 	return Vendors.LEVELS[level - 1]

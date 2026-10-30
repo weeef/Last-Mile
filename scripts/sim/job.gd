@@ -16,6 +16,7 @@ var promise := 180.0       # minutes from arrival at the depot
 var expires := 0.0         # when an offer disappears from the board
 var state := State.OFFERED
 var timer := 0.0
+var rush := false          # short-notice order: big pay, accept fast
 
 
 func stops() -> int:

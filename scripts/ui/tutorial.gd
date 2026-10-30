@@ -115,18 +115,18 @@ func _define_steps() -> void:
 			"done": func(): return _any_van(func(v): return v.ready or v.on_road()),
 		},
 		{
-			"title": "Send it",
-			"body": "Press GO on the ready vehicle (or click it and hit START ROUTE). It'll plan the shortest loop through every stop and come back when it's done.",
+			"title": "Plan it, then send it",
+			"body": "Click the ready vehicle to open its ROUTE SHEET. Each stop shows when you'll get there: red is late, yellow means nobody's home yet. Shuffle stops with the arrows, then hit SEND IT.",
 			"target": func():
-				if hud.selected and hud.selected.ready:
-					return hud.detail_start_button()
+				if hud.selected and hud.route_sheet.visible:
+					return hud.route_sheet.send_button()
 				var g = hud.fleet_go_button()
 				return g if g else hud.clipboard,
 			"done": func(): return _any_van(func(v): return v.on_road()),
 		},
 		{
 			"title": "You're in business",
-			"body": "On-time drops pay in full; late ones barely pay and hurt your reputation. Vehicles wear out as they drive. A worn one can break down mid-route, get towed to Gearbox Garage and wait in line for a bay. A $60 service is much cheaper. Tired of pressing GO? Turn on AUTO-DISPATCH under RULES. More vehicles live under BUY.",
+			"body": "Watch for RUSH orders on the board, road works and rush hour. If a vehicle breaks down, send a rescue before the tow takes the parcels back. At 21:00 you'll get a report card and pick an upgrade card. Stack mods on one truck to build a monster.",
 			"next": true,
 			"button": "Let's go",
 		},

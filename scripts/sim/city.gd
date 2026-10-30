@@ -22,7 +22,9 @@ var depot_blocks := {}           # Vector2i -> company id
 var depots: Array[Dictionary] = []
 var garage := {}                 # { "block": Vector2i, "node": int, "side": 1 }
 var vendor_lots: Array[Dictionary] = []   # one per vendor, same shape as a house
-var curb_lookup := {}            # "i,j,k" -> node id (horizontal segment curbs)
+var curb_lookup := {}
+var _dist_cache := {}
+var closures: Array = []        # [a, b] node pairs closed today            # "i,j,k" -> node id (horizontal segment curbs)
 
 
 func build(rng: RandomNumberGenerator) -> void:
@@ -164,6 +166,25 @@ static func path_length(p: PackedVector3Array) -> float:
 	for i in range(1, p.size()):
 		total += p[i - 1].distance_to(p[i])
 	return total
+
+
+## Driving distance along roads (cached; cleared when roads close/open).
+func road_dist(a: int, b: int) -> float:
+	if a == b:
+		return 0.0
+	var key := a * 100000 + b
+	if not _dist_cache.has(key):
+		_dist_cache[key] = path_length(path(a, b))
+	return _dist_cache[key]
+
+
+func set_closures(pairs: Array) -> void:
+	for c in closures:
+		astar.connect_points(c[0], c[1])
+	closures = pairs.duplicate()
+	for c in closures:
+		astar.disconnect_points(c[0], c[1])
+	_dist_cache.clear()
 
 
 func manhattan(a: int, b: int) -> float:

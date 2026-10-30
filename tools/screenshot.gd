@@ -1,7 +1,7 @@
 extends SceneTree
 ## Renders the game and saves a PNG.
 ## Usage: -s tools/screenshot.gd -- out.png <mode> <ticks>
-##   mode: title | picker | tutorial | play | wide | low | settings
+##   mode: title | picker | settings | briefing | play | route | report | rain | wide
 var main: Node
 var frame := 0
 var out := "shot.png"
@@ -16,39 +16,47 @@ func _init() -> void:
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 
-
 func _process(_d: float) -> bool:
 	frame += 1
-	if frame == 2 and mode == "settings":
-		main.open_settings()
-	if frame == 2 and mode == "low":
-		main.settings.apply_preset(0)
-		main.apply_settings()
-	if frame == 2 and mode == "picker":
+	if frame == 2:
+		match mode:
+			"picker": main._on_new_game(1)
+			"settings": main.open_settings()
+	if frame == 3 and mode not in ["title", "picker", "settings"]:
 		main._on_new_game(1)
-	if frame == 3 and mode not in ["picker", "settings", "title"]:
-		main._on_new_game(1)
-		main._on_fleet_chosen([&"van", &"box"], mode == "tutorial")
-		main.set_speed(0)
-	if frame == 5 and mode not in ["picker", "settings", "title"]:
+		main._on_fleet_chosen([&"van", &"box"], false)
+	if frame == 5 and mode not in ["title", "picker", "settings", "briefing"]:
 		var sim: Sim = main.sim
-		var p := sim.player()
-		for i in ticks:
-			if i % 40 == 0 and mode != "tutorial":
-				if p.active_jobs().size() < 1 and p.backlog() < 10:
-					for j in p.offers():
-						if not j.needs_liftgate() or true:
-							sim.submit({"type": "accept_job", "company": 0, "job": j.id}); break
+		if mode == "rain":
+			sim.weather = 1
+		if mode == "report":
+			AutoPlayer.run(sim, ticks)
+			while sim.phase != Sim.Phase.EVENING:
+				if sim.phase == Sim.Phase.MORNING or sim.phase == Sim.Phase.NIGHT:
+					AutoPlayer.act(sim, 1)
+				if sim.clock_running(): sim.step()
+		else:
+			AutoPlayer.run(sim, ticks)
+			main.speed = 0
+		if mode == "route":
+			var p := sim.player()
+			var found: Van = null
+			for k in 4000:
 				for v in p.vans:
-					if v.ready: sim.submit({"type": "start_route", "company": 0, "van": v.id})
-					if v.state == Van.State.IDLE and v.condition < 0.45:
-						sim.submit({"type": "service_van", "company": 0, "van": v.id})
-			sim.step()
-		if mode == "play":
-			for v in p.vans:
+					if v.state == Van.State.LOADING and v.cargo.size() >= 4:
+						found = v
+				if found: break
+				if k % 40 == 0 and p.active_jobs().is_empty():
+					for j in p.offers():
+						sim.submit({"type": "accept_job", "company": 0, "job": j.id}); break
+				if sim.clock_running(): sim.step()
+				else: AutoPlayer.act(sim, 0)
+			if found: main.select_van(found)
+		elif mode in ["play", "rain"]:
+			for v in sim.player().vans:
 				if v.on_road():
 					main.select_van(v); break
-	if frame == 90:
+	if frame == 100:
 		root.get_viewport().get_texture().get_image().save_png(out)
 		print("saved ", out)
 		quit()

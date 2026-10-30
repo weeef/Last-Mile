@@ -29,6 +29,11 @@ var _rival_sub: Label
 var _stats := {}
 # tools + detail
 var _tools: PanelContainer
+var route_sheet: RouteSheet
+var _contract_label: Label
+var _contract_bar: LMBar
+var _contract_val: Label
+var _conditions: Label
 var _detail: PanelContainer
 var _d := {}
 var _detail_van_id := -1
@@ -209,7 +214,26 @@ func _build_stats() -> void:
 	var hint := UIKit.label("drag: pan   ·   right-drag / Q E: rotate   ·   wheel: zoom   ·   click a vehicle   ·   space: pause", 12, Color(Palette.PAPER, 0.75), "head_semi")
 	hint.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.5))
 	hint.add_theme_constant_override("shadow_offset_y", 1)
-	_place(hint, Control.PRESET_TOP_LEFT, Vector2(20, 176))
+	_place(hint, Control.PRESET_TOP_LEFT, Vector2(20, 236))
+	var cp := UIKit.paper(8)
+	var ch := UIKit.hbox(10)
+	cp.add_child(ch)
+	ch.add_child(UIKit.head("Today's contract", 13, Palette.TEXT_SOFT))
+	_contract_label = UIKit.label("", 14, Palette.TEXT, "bold")
+	ch.add_child(_contract_label)
+	_contract_bar = LMBar.new()
+	_contract_bar.custom_minimum_size = Vector2(90, 8)
+	_contract_bar.color = Palette.GREEN
+	_contract_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	ch.add_child(_contract_bar)
+	_contract_val = UIKit.mono("", 13, Palette.TEXT, true)
+	ch.add_child(_contract_val)
+	_place(cp, Control.PRESET_TOP_LEFT, Vector2(16, 176))
+	var cond := UIKit.label("", 13, Palette.PAPER, "head")
+	cond.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	cond.add_theme_constant_override("shadow_offset_y", 1)
+	_conditions = cond
+	add_child(cond)
 
 
 # ============================================================= tools
@@ -331,6 +355,8 @@ func _build_detail() -> void:
 	v.add_child(UIKit.rule())
 	_d["traits"] = UIKit.vbox(4)
 	v.add_child(_d["traits"])
+	_d["mods"] = UIKit.hbox(4)
+	v.add_child(_d["mods"])
 
 	var actions := UIKit.hbox(8)
 	_d["start"] = UIKit.button("Start route", "go", 16)
@@ -349,17 +375,36 @@ func _build_detail() -> void:
 	actions.add_child(_d["service"])
 	_d["actions"] = actions
 	v.add_child(actions)
+	_d["rescue"] = UIKit.button("Send rescue", "go", 16)
+	_d["rescue"].custom_minimum_size.y = 36
+	_d["rescue"].tooltip_text = "Send a vehicle from the depot to collect the stranded parcels before the tow truck takes them back."
+	_d["rescue"].pressed.connect(func():
+		var r := sim.best_rescuer(sim.player())
+		if selected and r:
+			main.submit_player({"type": "rescue", "van": r.id, "target": selected.id}))
+	v.add_child(_d["rescue"])
 	_place(_detail, Control.PRESET_TOP_RIGHT, Vector2(16, 104), Vector2(DETAIL_W, 0))
+	route_sheet = RouteSheet.new()
+	route_sheet.setup(sim, main)
+	route_sheet.visible = false
+	_place(route_sheet, Control.PRESET_TOP_RIGHT, Vector2(16, 104), Vector2(DETAIL_W + 20, 0))
 
 
 func detail_start_button() -> Control:
 	return _d["start"]
 
 
+func _planning(v: Van) -> bool:
+	return v != null and v.company == Sim.PLAYER and v.state in [Van.State.IDLE, Van.State.LOADING]
+
+
 func select(v: Van) -> void:
 	selected = v
-	_detail.visible = v != null
-	_tools.offset_right = -(16.0 + (DETAIL_W + 10.0 if v != null else 0.0))
+	_detail.visible = v != null and not _planning(v)
+	route_sheet.visible = _planning(v)
+	if _planning(v):
+		route_sheet.set_van(v)
+	_tools.offset_right = -(16.0 + (DETAIL_W + 30.0 if v != null else 0.0))
 	_tools.offset_left = _tools.offset_right - 46.0
 	_detail_van_id = -1
 	for id in _fleet_rows.keys():
@@ -427,7 +472,15 @@ func _refresh_detail() -> void:
 			desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			tr.add_child(desc)
 			tv.add_child(tr)
-		_d["actions"].visible = mine
+		_d["actions"].visible = false   # starting/servicing lives on the route sheet now
+		var mh: HBoxContainer = _d["mods"]
+		for ch in mh.get_children():
+			ch.queue_free()
+		if not v.mods.is_empty() or mine:
+			mh.add_child(UIKit.head("Mods %d/%d" % [v.mods.size(), v.mod_slots()], 13, Palette.TEXT_SOFT))
+			for m in v.mods:
+				var cd := Cards.get_card(m)
+				mh.add_child(UIKit.stamp(cd["name"], Cards.RARITY_COLORS[cd["rarity"]], 11))
 	_d["driver"].text = d.name
 	_d["driver_sub"].text = "· %d drops today · hired day %d" % [d.delivered_today, d.hired_day]
 	var col := _state_color(v)
@@ -481,6 +534,12 @@ func _refresh_detail() -> void:
 	_d["ETA"].text = ("%d min" % ceili(sim.eta_minutes(v))) if v.state in [Van.State.EN_ROUTE, Van.State.RETURNING, Van.State.TOWING, Van.State.TO_SHOP] else "—"
 	var dist := np.district if np else d.home_district
 	_d["Knows area"].text = "%s %d%%" % [City.DISTRICT_NAMES[dist], int(d.familiarity[dist] * 100)]
+	var rescue: Button = _d["rescue"]
+	rescue.visible = mine and v.state == Van.State.BROKEN and not v.cargo.is_empty()
+	if rescue.visible:
+		var r := sim.best_rescuer(sim.player())
+		rescue.disabled = r == null
+		rescue.text = ("SEND RESCUE (%s)" % r.code) if r else "NO VEHICLE AT THE DEPOT"
 	if mine:
 		var start: Button = _d["start"]
 		start.disabled = not (v.state == Van.State.LOADING and not v.cargo.is_empty())
@@ -691,7 +750,7 @@ func _rebuild_jobs() -> void:
 			_jobs_list.add_child(_job_row(j))
 	_jobs_list.add_child(UIKit.head("Open jobs", 14, Palette.TEXT_SOFT))
 	var offers := p.offers()
-	offers.sort_custom(func(a: Job, b: Job): return a.pay > b.pay)
+	offers.sort_custom(func(a: Job, b: Job): return a.pay > b.pay if a.rush == b.rush else a.rush)
 	for j in offers:
 		_jobs_list.add_child(_job_row(j))
 	if offers.is_empty():
@@ -723,7 +782,9 @@ func _job_row(j: Job) -> Control:
 	load_row.add_child(UIKit.mono("%d stops · %dkg" % [j.stops(), int(j.total_kg)], 13, Palette.TEXT, true))
 	if j.needs_liftgate():
 		load_row.add_child(UIKit.stamp("Heavy", Palette.RED, 11))
-	if j.express:
+	if j.rush:
+		load_row.add_child(UIKit.stamp("Rush", Palette.RED, 11))
+	elif j.express:
 		load_row.add_child(UIKit.stamp("Express", Palette.ORANGE, 11))
 	mid.add_child(load_row)
 	var sub := UIKit.label("", 11, Palette.TEXT_SOFT)
@@ -806,7 +867,10 @@ func _refresh_jobs() -> void:
 		var j: Job = r["job"]
 		var vd := Vendors.get_vendor(j.vendor)
 		if j.state == Job.State.OFFERED:
-			r["sub"].text = "due %s after drop-off · posted %dm more" % [_dur(j.promise), maxi(0, int(j.expires - now))]
+			if j.rush:
+				r["sub"].text = "RUSH: accept in %dm · due %s after drop-off" % [maxi(0, int(j.expires - now)), _dur(j.promise)]
+			else:
+				r["sub"].text = "due %s after drop-off · posted %dm more" % [_dur(j.promise), maxi(0, int(j.expires - now))]
 			var b: Button = r["right"]
 			b.disabled = j.needs_liftgate() and not has_box
 			b.tooltip_text = "Needs a box truck (liftgate)" if b.disabled else "%s packs it in %d min, then drops it at your depot." % [vd["name"], int(vd["prep"])]
@@ -1153,7 +1217,7 @@ func _build_overlay() -> void:
 
 
 func _toast(text: String, kind: String) -> void:
-	var colors := {"info": Palette.BLUE, "good": Palette.GREEN, "rival": Palette.PURPLE, "bad": Palette.RED}
+	var colors := {"info": Palette.BLUE, "good": Palette.GREEN, "rival": Palette.PURPLE, "bad": Palette.RED, "rush": Palette.ORANGE}
 	var c: Color = colors.get(kind, Palette.BLUE)
 	var p := PanelContainer.new()
 	var st := UIKit.paper_style(Palette.PAPER, 10, 4)
@@ -1210,9 +1274,9 @@ func refresh(speed: int, cam: Camera3D, world: WorldView) -> void:
 	_fps.visible = show_fps
 	if show_fps:
 		_fps.text = "%d FPS" % Engine.get_frames_per_second()
-		_fps.position = Vector2(20, 196)
+		_fps.position = Vector2(20, 256)
 	_toasts.size = _toasts.get_combined_minimum_size()
-	_toasts.position = Vector2(floorf((vp.x - _toasts.size.x) * 0.5), 84)
+	_toasts.position = Vector2(floorf((vp.x - _toasts.size.x) * 0.5), 104)
 	var p := sim.player()
 	var r := sim.rival()
 	var li := p.level_info()
@@ -1224,7 +1288,34 @@ func refresh(speed: int, cam: Camera3D, world: WorldView) -> void:
 	else:
 		_level_bar.value = (p.lifetime_revenue - li["revenue"]) / (nxt["revenue"] - li["revenue"])
 		_level_sub.text = "%s / %s earned" % [UIKit.money(p.lifetime_revenue), UIKit.money(nxt["revenue"])]
-	_day.text = "DAY %d%s" % [sim.day(), "  ·  PAUSED" if speed == 0 else ""]
+	_day.text = "DAY %d · %s%s" % [sim.day(), String(Sim.WEATHER[sim.weather]).to_upper(), "  ·  PAUSED" if speed == 0 else ""]
+	var conds: Array = []
+	if sim.is_rush_hour():
+		conds.append("RUSH HOUR: traffic slow")
+	if not sim.city.closures.is_empty():
+		conds.append("%d ROAD%s CLOSED" % [sim.city.closures.size(), "S" if sim.city.closures.size() > 1 else ""])
+	if sim.weather == 1:
+		conds.append("RAIN: slower roads, more breakdowns")
+	elif sim.weather == 2:
+		conds.append("FOG: slower roads")
+	_conditions.text = "   ·   ".join(conds)
+	_conditions.position = Vector2(floorf((vp.x - _conditions.size.x) * 0.5), 64 + 12)
+	if not p.contract.is_empty():
+		_contract_label.text = Contracts.describe(p.contract)
+		var prog := Contracts.progress(p.contract, p.counters)
+		_contract_bar.value = prog / float(p.contract["target"])
+		_contract_val.text = ("DONE  +%s" % UIKit.money(p.contract["reward"])) if p.contract_done else "%d / %d" % [int(prog), p.contract["target"]]
+		_contract_val.add_theme_color_override("font_color", Palette.GREEN if p.contract_done else Palette.TEXT)
+	else:
+		_contract_label.text = "none today"
+		_contract_bar.value = 0.0
+		_contract_val.text = ""
+	if selected:
+		var planning := _planning(selected)
+		if planning != route_sheet.visible:
+			select(selected)
+		if planning:
+			route_sheet.refresh()
 	_clock.text = sim.clock_now()
 	for s in _speed_btns.keys():
 		var b: Button = _speed_btns[s]

@@ -23,6 +23,11 @@ var stage := Stage.PLACED
 var stage_times: Array[float] = [-1.0, -1.0, -1.0, -1.0, -1.0]
 var van_code := ""
 var late := false
+# Delivery windows: arriving before window_start means nobody's home.
+var window_start := -1.0
+var window_end := -1.0
+var signature := false
+var attempts := 0
 
 
 func set_stage(s: Stage, minute: float) -> void:
@@ -40,6 +45,14 @@ func pay() -> float:
 
 func heavy() -> bool:
 	return weight >= Vendors.HEAVY_KG
+
+
+func window_text() -> String:
+	if window_start > 0.0:
+		return "after " + Sim.clock(window_start)
+	if window_end > 0.0:
+		return "before " + Sim.clock(window_end)
+	return ""
 
 
 func kind_name() -> String:

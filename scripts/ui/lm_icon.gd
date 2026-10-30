@@ -112,6 +112,10 @@ func _draw() -> void:
 					c + d * 9.5 * u - n * 1.3 * u, c + d * 6.0 * u - n * 1.6 * u]), color)
 			draw_circle(c, 6.6 * u, color)
 			draw_circle(c, 2.6 * u, Palette.INK_2)
+		"up":
+			draw_colored_polygon(PackedVector2Array([P.call(12, 5), P.call(20, 16), P.call(4, 16)]), color)
+		"down":
+			draw_colored_polygon(PackedVector2Array([P.call(4, 8), P.call(20, 8), P.call(12, 19)]), color)
 		"chevron":
 			draw_polyline(PackedVector2Array([P.call(9, 6), P.call(15, 12), P.call(9, 18)]), color, w, true)
 		_:

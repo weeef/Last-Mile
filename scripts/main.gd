@@ -18,6 +18,7 @@ var _last_speed := 1
 var _overlay: Control = null  # title / start screen / pause menu
 var _settings_menu: SettingsMenu = null
 var _tutorial: Tutorial = null
+var _want_tutorial := false
 
 
 func _ready() -> void:
@@ -92,14 +93,10 @@ func _on_new_game(p_slot: int) -> void:
 
 func _on_fleet_chosen(vehicles: Array, tutorial: bool) -> void:
 	_set_overlay(null)
-	submit_player({"type": "starter_fleet", "vehicles": vehicles})
 	started = true
-	set_speed(1)
+	_want_tutorial = tutorial
+	submit_player({"type": "starter_fleet", "vehicles": vehicles})   # opens the first briefing
 	save_game()
-	if tutorial:
-		_tutorial = Tutorial.new()
-		layer.add_child(_tutorial)
-		_tutorial.setup(sim, hud, self)
 
 
 func _on_load_game(p_slot: int) -> void:
@@ -113,7 +110,8 @@ func _on_load_game(p_slot: int) -> void:
 	cam.home()
 	started = true
 	speed = 0
-	set_speed(1)
+	_last_speed = 1
+	_show_phase_overlay()
 
 
 func save_game() -> bool:
@@ -123,8 +121,41 @@ func save_game() -> bool:
 
 
 func _on_sim_event(n: String, _d: Dictionary) -> void:
-	if n == "day_started" and started:
-		save_game()
+	if not started:
+		return
+	match n:
+		"morning":
+			save_game()
+			_show_phase_overlay()
+		"evening":
+			_show_phase_overlay()
+		"day_begun":
+			_set_overlay(null)
+			set_speed(_last_speed)
+			if _want_tutorial:
+				_want_tutorial = false
+				_tutorial = Tutorial.new()
+				layer.add_child(_tutorial)
+				_tutorial.setup(sim, hud, self)
+		"night":
+			_set_overlay(null)
+
+
+## Shows the briefing or the evening report if the sim is waiting on one.
+func _show_phase_overlay() -> void:
+	select_van(null)
+	if sim.phase == Sim.Phase.MORNING:
+		speed = 0
+		var b := Briefing.new()
+		_set_overlay(b)
+		b.setup(sim, self)
+	elif sim.phase == Sim.Phase.EVENING:
+		speed = 0
+		var r := DayReport.new()
+		_set_overlay(r)
+		r.setup(sim, self)
+	elif sim.phase == Sim.Phase.DAY:
+		set_speed(_last_speed)
 
 
 # ------------------------------------------------------------- frame
@@ -132,14 +163,20 @@ func _on_sim_event(n: String, _d: Dictionary) -> void:
 func _process(delta: float) -> void:
 	if not started:
 		cam.rotate_by(delta * 2.5)   # slow orbit behind the title screen
-	if speed > 0:
+	if started and sim.phase == Sim.Phase.NIGHT:
+		# The night shift runs on its own: fast-forward to the next morning.
+		var k := 0
+		while sim.phase == Sim.Phase.NIGHT and k < 1500:
+			sim.step()
+			k += 1
+	elif speed > 0 and sim.clock_running():
 		_acc += delta * speed * Sim.TICK_RATE
 		var n := 0
-		while _acc >= 1.0 and n < 400:
+		while _acc >= 1.0 and n < 400 and sim.clock_running():
 			sim.step()
 			_acc -= 1.0
 			n += 1
-		if n >= 400:
+		if n >= 400 or not sim.clock_running():
 			_acc = 0.0
 	world.sync(_acc if speed > 0 else 1.0, delta, speed > 0)
 	if hud.visible:
@@ -228,10 +265,10 @@ func set_speed(s: int) -> void:
 func submit_player(cmd: Dictionary) -> void:
 	cmd["company"] = Sim.PLAYER
 	sim.submit(cmd)
-	# Commands apply on the next tick; nudge one through while paused so
-	# buttons still respond.
-	if speed == 0 and started:
-		sim.step()
+	# Commands normally apply on the next tick; apply them right away while
+	# the clock is stopped so buttons still respond.
+	if started and (speed == 0 or not sim.clock_running()):
+		sim.apply_commands_now()
 
 
 func select_van(v: Van) -> void:

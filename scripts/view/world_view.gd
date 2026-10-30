@@ -34,6 +34,13 @@ var _fences: MultiMeshInstance3D
 var _cars: Array = []
 var _crosswalks: MultiMeshInstance3D
 var _shadow_dist := 180.0
+var _route_mesh: MeshInstance3D
+var _route_labels: Array = []
+var _route_sig := ""
+var _barriers: Node3D
+var _rain: CPUParticles3D
+var _detail_level := 2
+var fog_allowed := true
 
 
 func setup(p_sim: Sim) -> void:
@@ -55,7 +62,21 @@ func setup(p_sim: Sim) -> void:
 		for v in c.vans:
 			_add_van_node(v)
 	sim.van_added.connect(_add_van_node)
+	sim.van_removed.connect(_remove_van_node)
 	sim.parcel_delivered.connect(_on_delivered)
+	sim.event.connect(_on_sim_event)
+	_route_mesh = MeshInstance3D.new()
+	var rm := StandardMaterial3D.new()
+	rm.albedo_color = Palette.ORANGE
+	rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	rm.no_depth_test = false
+	_route_mesh.material_override = rm
+	_route_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_route_mesh)
+	_barriers = Node3D.new()
+	add_child(_barriers)
+	_build_rain()
+	_refresh_closures()
 	_bracket = _make_bracket()
 	_bracket.visible = false
 	add_child(_bracket)
@@ -731,6 +752,7 @@ func sync(alpha: float, delta: float, playing: bool) -> void:
 	_sync_depots()
 	_sync_pins()
 	_sync_bracket()
+	_sync_route()
 	_sync_daylight()
 
 
@@ -916,6 +938,12 @@ func _sync_daylight() -> void:
 		dusk = 1.0 - absf(h - 6.5) / 1.5
 	dusk = clampf(dusk, 0.0, 1.0)
 	var sky := Palette.SKY_NIGHT.lerp(Palette.SKY_DAY, day_f).lerp(Palette.SKY_DUSK, dusk * 0.6)
+	_rain.emitting = sim.weather == 1 and sim.clock_running()
+	if sim.weather == 1:
+		sky = sky.darkened(0.25)
+		day_f *= 0.8
+	env.fog_enabled = fog_allowed or sim.weather == 2
+	env.fog_density = 0.012 if sim.weather == 2 else 0.0022
 	env.background_color = sky
 	env.fog_light_color = sky.darkened(0.15)
 	sun.light_energy = lerpf(0.18, 0.85, day_f)
@@ -926,6 +954,173 @@ func _sync_daylight() -> void:
 	_window_mat.emission_energy_multiplier = night * 1.8
 	_lamp_mat.emission_energy_multiplier = 0.2 + night * 3.0
 	_shop_window_mat.emission_energy_multiplier = 0.3 + night * 1.5
+
+
+# ------------------------------------------------------------- events, route line, weather
+
+func _on_sim_event(n: String, d: Dictionary) -> void:
+	match n:
+		"morning", "evening", "day_begun":
+			_refresh_closures()
+		"not_home":
+			var p: Parcel = d["parcel"]
+			if p.company == Sim.PLAYER:
+				_pop_label(sim.city.houses[p.house]["pos"] + Vector3(0, 2.8, 0), "NOBODY HOME", Color("f2c26b"))
+
+
+func _remove_van_node(v: Van) -> void:
+	if _van_nodes.has(v.id):
+		_van_nodes[v.id].queue_free()
+		_van_nodes.erase(v.id)
+		_van_render.erase(v.id)
+
+
+func _refresh_closures() -> void:
+	for ch in _barriers.get_children():
+		ch.queue_free()
+	var stripe_a := mat(Color("e07a2e"))
+	var stripe_b := mat(Color("efe6d0"))
+	for c in sim.city.closures:
+		var a := sim.city.node_pos(c[0])
+		var b := sim.city.node_pos(c[1])
+		for t in [0.25, 0.75]:
+			var p := a.lerp(b, t)
+			for k in 4:
+				box(Vector3(0.6, 0.35, 0.12), p + Vector3(-0.9 + k * 0.6, 0.45, 0), stripe_a if k % 2 == 0 else stripe_b, _barriers)
+			for sx in [-1.2, 1.2]:
+				box(Vector3(0.1, 0.6, 0.1), p + Vector3(sx, 0.3, 0), mat(Color("2b2a2e")), _barriers)
+		for k in 3:
+			var cone := cyl(0.0, 0.18, 0.45, a.lerp(b, 0.4 + k * 0.1) + Vector3(0.3 * (k - 1), 0.25, 0.4), stripe_a, _barriers, 8)
+			cone.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+func _build_rain() -> void:
+	_rain = CPUParticles3D.new()
+	_rain.amount = 1600
+	_rain.lifetime = 0.9
+	_rain.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	_rain.emission_box_extents = Vector3(City.HALF + 10.0, 0.5, City.HALF + 10.0)
+	_rain.direction = Vector3(0.15, -1, 0.05)
+	_rain.spread = 2.0
+	_rain.initial_velocity_min = 38.0
+	_rain.initial_velocity_max = 44.0
+	_rain.gravity = Vector3.ZERO
+	var drop := BoxMesh.new()
+	drop.size = Vector3(0.03, 0.9, 0.03)
+	var dm := StandardMaterial3D.new()
+	dm.albedo_color = Color(0.75, 0.8, 0.9, 0.45)
+	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	drop.material = dm
+	_rain.mesh = drop
+	_rain.position = Vector3(0, 32, 0)
+	_rain.emitting = false
+	add_child(_rain)
+
+
+## Draws the selected van's route (planned or remaining) with numbered stops.
+func _sync_route() -> void:
+	var v := selected_van
+	if v == null or v.company != Sim.PLAYER or v.cargo.is_empty() \
+			or not v.state in [Van.State.IDLE, Van.State.LOADING, Van.State.EN_ROUTE, Van.State.DELIVERING]:
+		if _route_sig != "":
+			_route_sig = ""
+			_route_mesh.mesh = null
+			for l in _route_labels:
+				l.queue_free()
+			_route_labels.clear()
+		return
+	var at_depot := v.state in [Van.State.IDLE, Van.State.LOADING]
+	var est := sim.estimate_route(v, v.cargo, sim.player().depot_node, sim.minutes()) if at_depot else {}
+	var sig := "%d|%s|" % [v.id, at_depot]
+	for p in v.cargo:
+		sig += str(p.id) + ","
+	if at_depot:
+		for s in est["stops"]:
+			sig += String(s["status"])[0]
+	if not at_depot:
+		sig += "|%d" % v.path_i
+	if sig == _route_sig:
+		return
+	_route_sig = sig
+	for l in _route_labels:
+		l.queue_free()
+	_route_labels.clear()
+	var nodes: Array = []
+	nodes.append(sim.player().depot_node if at_depot else v.target_node)
+	for p in v.cargo:
+		nodes.append(sim.city.houses[p.house]["curb"])
+	var pts := PackedVector3Array()
+	if not at_depot:
+		pts.append(v.pos)
+		pts.append_array(v.path.slice(v.path_i))
+	for i in range(1, nodes.size()):
+		pts.append_array(sim.city.path(nodes[i - 1], nodes[i]))
+	_route_mesh.mesh = _ribbon(pts, 0.32, 0.18)
+	for i in v.cargo.size():
+		var p := v.cargo[i]
+		var status := "ok"
+		if at_depot:
+			status = est["stops"][i]["status"]
+		var col := Color("b9d98f") if status == "ok" else (Color("f09a86") if status == "late" else Color("f2c26b"))
+		var l := Label3D.new()
+		l.font = _font_mono
+		l.text = str(i + 1)
+		l.font_size = 72
+		l.pixel_size = 0.012
+		l.outline_size = 22
+		l.outline_modulate = Palette.INK
+		l.modulate = col
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		l.no_depth_test = true
+		l.render_priority = 5
+		l.outline_render_priority = 4
+		l.position = sim.city.houses[p.house]["pos"] + Vector3(0, 3.4, 0)
+		add_child(l)
+		_route_labels.append(l)
+
+
+func _ribbon(pts: PackedVector3Array, width: float, y: float) -> ArrayMesh:
+	if pts.size() < 2:
+		return null
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in range(1, pts.size()):
+		var a := pts[i - 1]
+		var b := pts[i]
+		var d := b - a
+		if d.length() < 0.01:
+			continue
+		var side := d.normalized().cross(Vector3.UP) * width * 0.5
+		var off := d.normalized().cross(Vector3.UP) * 0.68   # sit in the driving lane
+		var a0 := a + off - side + Vector3(0, y, 0)
+		var a1 := a + off + side + Vector3(0, y, 0)
+		var b0 := b + off - side + Vector3(0, y, 0)
+		var b1 := b + off + side + Vector3(0, y, 0)
+		for vtx in [a0, b0, a1, a1, b0, b1]:
+			st.add_vertex(vtx)
+	return st.commit()
+
+
+func _pop_label(pos: Vector3, text: String, col: Color) -> void:
+	var l := Label3D.new()
+	l.font = _font_mono
+	l.text = text
+	l.font_size = 56
+	l.pixel_size = 0.01
+	l.outline_size = 16
+	l.outline_modulate = Palette.INK
+	l.modulate = col
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.position = pos
+	add_child(l)
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(l, "position", pos + Vector3(0, 1.6, 0), 1.6)
+	tw.tween_property(l, "modulate:a", 0.0, 1.2).set_delay(0.8)
+	tw.tween_property(l, "outline_modulate:a", 0.0, 1.2).set_delay(0.8)
+	tw.chain().tween_callback(l.queue_free)
 
 
 # ------------------------------------------------------------- graphics settings
@@ -943,7 +1138,10 @@ func apply_graphics(s: GameSettings) -> void:
 		_shadow_dist = 180.0
 		sun.shadow_blur = 1.4
 	sun.directional_shadow_max_distance = _shadow_dist
-	env.fog_enabled = s.fog == 1
+	fog_allowed = s.fog == 1
+	env.fog_enabled = fog_allowed
+	_detail_level = s.detail
+	_rain.amount = [500, 1000, 1600][s.detail]
 	# Detail: Low hides most of the woods, fences, parked cars and crosswalks;
 	# Medium keeps half the woods; High shows everything.
 	for mmi in _forest:
