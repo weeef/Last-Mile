@@ -3,6 +3,7 @@ extends Control
 ## "Pick your first two vehicles" screen shown before the clock starts.
 
 signal chosen(vehicles: Array, tutorial: bool)
+signal settings_requested
 
 var picks: Array = []
 var _slots: Array[Label] = []
@@ -71,6 +72,10 @@ func _ready() -> void:
 	v.add_child(slot_row)
 
 	var actions := UIKit.hbox(10)
+	var gear := UIKit.button("Settings", "paper", 17)
+	gear.tooltip_text = "Resolution, window mode and graphics quality"
+	gear.pressed.connect(func(): settings_requested.emit())
+	actions.add_child(gear)
 	actions.add_child(UIKit.spacer())
 	_skip = UIKit.button("Start, skip tutorial", "paper", 17)
 	_skip.pressed.connect(func(): chosen.emit(picks.duplicate(), false))

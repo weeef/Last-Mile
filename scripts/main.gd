@@ -9,6 +9,8 @@ var world: WorldView
 var cam: CameraRig
 var hud: HUD
 var layer: CanvasLayer
+var settings := GameSettings.new()
+var _settings_menu: SettingsMenu = null
 var speed := 0
 var started := false
 var _acc := 0.0
@@ -22,6 +24,7 @@ func _ready() -> void:
 	world = WorldView.new()
 	add_child(world)
 	world.setup(sim)
+	settings.load_or_detect()
 
 	cam = CameraRig.new()
 	add_child(cam)
@@ -36,6 +39,10 @@ func _ready() -> void:
 	var picker := StartScreen.new()
 	layer.add_child(picker)
 	picker.chosen.connect(_on_fleet_chosen.bind(picker))
+	picker.settings_requested.connect(open_settings)
+	apply_settings()
+	if settings.first_run:
+		settings.save()
 
 
 func _on_fleet_chosen(vehicles: Array, tutorial: bool, picker: Control) -> void:
@@ -64,6 +71,12 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		if selected_van_exists():
+			select_van(null)
+		else:
+			open_settings()
+		return
 	if not started:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -78,8 +91,27 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_speed(4)
 			KEY_4:
 				set_speed(8)
-			KEY_ESCAPE:
-				select_van(null)
+
+
+# ------------------------------------------------------------- settings
+
+func apply_settings() -> void:
+	settings.apply_display(get_window())
+	world.apply_graphics(settings)
+	hud.show_fps = settings.show_fps == 1
+
+
+func open_settings() -> void:
+	if _settings_menu != null:
+		return
+	_settings_menu = SettingsMenu.new()
+	layer.add_child(_settings_menu)
+	_settings_menu.setup(settings, self)
+	_settings_menu.closed.connect(func(): _settings_menu = null)
+
+
+func selected_van_exists() -> bool:
+	return world.selected_van != null
 
 
 # ------------------------------------------------------------- called by the UI
@@ -123,6 +155,8 @@ func camera_tool(key: String) -> void:
 			cam.rotate_by(45.0)
 		"home":
 			cam.home()
+		"gear":
+			open_settings()
 
 
 func _on_world_clicked(pos: Vector2) -> void:

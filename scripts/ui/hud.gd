@@ -11,6 +11,8 @@ const SPEEDS := [0, 1, 2, 4, 8]
 var sim: Sim
 var main: Node
 var selected: Van = null
+var show_fps := false
+var _fps: Label
 
 # masthead / top
 var _level_name: Label
@@ -216,7 +218,7 @@ func _build_tools() -> void:
 	_tools = UIKit.ink(4)
 	var v := UIKit.vbox(2)
 	_tools.add_child(v)
-	var defs := [["plus", "Zoom in"], ["minus", "Zoom out"], ["rot_l", "Rotate left (Q)"], ["rot_r", "Rotate right (E)"], ["home", "Reset view (H)"]]
+	var defs := [["plus", "Zoom in"], ["minus", "Zoom out"], ["rot_l", "Rotate left (Q)"], ["rot_r", "Rotate right (E)"], ["home", "Reset view (H)"], ["gear", "Settings (Esc)"]]
 	for d in defs:
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(38, 38)
@@ -1144,6 +1146,10 @@ func _build_overlay() -> void:
 
 	_toasts = UIKit.vbox(6)
 	add_child(_toasts)
+	_fps = UIKit.mono("", 12, Palette.PAPER, true)
+	_fps.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	_fps.add_theme_constant_override("shadow_offset_y", 1)
+	add_child(_fps)
 
 
 func _toast(text: String, kind: String) -> void:
@@ -1201,6 +1207,10 @@ func refresh(speed: int, cam: Camera3D, world: WorldView) -> void:
 		size = vp
 	_clock_panel.size = _clock_panel.get_combined_minimum_size()
 	_clock_panel.position = Vector2(floorf((vp.x - _clock_panel.size.x) * 0.5), 12)
+	_fps.visible = show_fps
+	if show_fps:
+		_fps.text = "%d FPS" % Engine.get_frames_per_second()
+		_fps.position = Vector2(20, 196)
 	_toasts.size = _toasts.get_combined_minimum_size()
 	_toasts.position = Vector2(floorf((vp.x - _toasts.size.x) * 0.5), 84)
 	var p := sim.player()

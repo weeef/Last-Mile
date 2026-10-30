@@ -102,6 +102,16 @@ func _draw() -> void:
 			draw_colored_polygon(PackedVector2Array([P.call(15, 6), P.call(21, 4), P.call(21, 18), P.call(15, 20)]), color)
 		"bolt":
 			draw_colored_polygon(PackedVector2Array([P.call(13, 3), P.call(6, 13.5), P.call(11, 13.5), P.call(10, 21), P.call(18, 10), P.call(13, 10), P.call(14.5, 3)]), color)
+		"gear":
+			var c: Vector2 = P.call(12, 12)
+			for k in 8:
+				var a := k * TAU / 8.0
+				var d := Vector2(cos(a), sin(a))
+				var n := Vector2(-d.y, d.x)
+				draw_colored_polygon(PackedVector2Array([c + d * 6.0 * u + n * 1.6 * u, c + d * 9.5 * u + n * 1.3 * u,
+					c + d * 9.5 * u - n * 1.3 * u, c + d * 6.0 * u - n * 1.6 * u]), color)
+			draw_circle(c, 6.6 * u, color)
+			draw_circle(c, 2.6 * u, Palette.INK_2)
 		"chevron":
 			draw_polyline(PackedVector2Array([P.call(9, 6), P.call(15, 12), P.call(9, 18)]), color, w, true)
 		_:

@@ -1,7 +1,7 @@
 extends SceneTree
 ## Renders the game and saves a PNG.
 ## Usage: -s tools/screenshot.gd -- out.png <mode> <ticks>
-##   mode: picker | tutorial | play | night
+##   mode: picker | tutorial | play | wide | low | settings
 var main: Node
 var frame := 0
 var out := "shot.png"
@@ -23,12 +23,17 @@ func _picker() -> Node:
 
 func _process(_d: float) -> bool:
 	frame += 1
-	if frame == 3 and mode != "picker":
+	if frame == 2 and mode == "settings":
+		main.open_settings()
+	if frame == 2 and mode == "low":
+		main.settings.apply_preset(0)
+		main.apply_settings()
+	if frame == 3 and mode != "picker" and mode != "settings":
 		var pk = _picker()
 		pk.picks = [&"van", &"box"]
 		main._on_fleet_chosen([&"van", &"box"], mode == "tutorial", pk)
 		main.set_speed(0)
-	if frame == 5 and mode != "picker":
+	if frame == 5 and mode != "picker" and mode != "settings":
 		var sim: Sim = main.sim
 		var p := sim.player()
 		for i in ticks:

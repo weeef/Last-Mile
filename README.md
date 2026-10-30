@@ -37,6 +37,15 @@ The tutorial (offered on the start screen) walks through steps 2–4.
 Corner Pantry (start) · Sunrise Bakery · Oak & Iron (furniture, needs a box truck)
 · Bloom & Co. · Byte Electronics · Pharma Plus. Better vendors pack faster and pay more.
 
+## Settings (Esc or the gear button)
+
+Window mode, resolution, UI scale, VSync and FPS limit, plus a **Low / Medium / High**
+graphics preset (3D render scale, anti-aliasing, shadows, fog, scenery detail).
+On first launch the game reads the graphics card and picks a preset: integrated or
+software GPUs start on Low. The game uses Godot's Compatibility renderer (OpenGL 3.3,
+with an ANGLE/DirectX fallback on Windows), so it runs on older and low-end PCs too.
+Settings are saved to `user://settings.cfg`.
+
 ## Controls
 
 | Action | Input |
@@ -47,6 +56,7 @@ Corner Pantry (start) · Sunrise Bakery · Oak & Iron (furniture, needs a box tr
 | Reset view | H |
 | Select a vehicle | Click it, or click its row in FLEET |
 | Pause / resume | Space |
+| Settings | Esc (when nothing is selected) |
 | Speed 1x / 2x / 4x / 8x | 1 / 2 / 3 / 4 |
 
 ## Code layout

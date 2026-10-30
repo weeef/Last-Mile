@@ -28,6 +28,12 @@ var _font_sign: FontFile
 var _font_mono: FontFile
 var _time := 0.0
 var _rng := RandomNumberGenerator.new()
+# Graphics-detail hooks
+var _forest: Array = []        # MultiMeshInstance3D of the woods around town
+var _fences: MultiMeshInstance3D
+var _cars: Array = []
+var _crosswalks: MultiMeshInstance3D
+var _shadow_dist := 180.0
 
 
 func setup(p_sim: Sim) -> void:
@@ -130,9 +136,9 @@ func sign_label(text: String, size: int, col: Color, pos: Vector3, yaw_deg: floa
 	return l
 
 
-func _multimesh(mesh: Mesh, tfs: Array[Transform3D], offset: Vector3) -> void:
+func _multimesh(mesh: Mesh, tfs: Array[Transform3D], offset: Vector3) -> MultiMeshInstance3D:
 	if tfs.is_empty():
-		return
+		return null
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = mesh
@@ -143,6 +149,7 @@ func _multimesh(mesh: Mesh, tfs: Array[Transform3D], offset: Vector3) -> void:
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	add_child(mmi)
+	return mmi
 
 
 # ------------------------------------------------------------- environment
@@ -197,7 +204,7 @@ func _build_ground() -> void:
 			continue
 		var b := Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * _rng.randf_range(0.9, 2.0))
 		trees.append(Transform3D(b, p))
-	_add_trees(trees)
+	_forest = _add_trees(trees)
 
 
 func _build_blocks() -> void:
@@ -239,7 +246,7 @@ func _build_blocks() -> void:
 	var post := BoxMesh.new()
 	post.size = Vector3(0.07, 0.38, 0.07)
 	post.material = mat(Color("d9cfb8"))
-	_multimesh(post, posts, Vector3(0, 0.19, 0))
+	_fences = _multimesh(post, posts, Vector3(0, 0.19, 0))
 
 
 func _build_house(h: Dictionary, posts: Array[Transform3D]) -> void:
@@ -301,6 +308,7 @@ func _make_car(parent: Node3D, pos: Vector3, col: Color) -> void:
 	var car := Node3D.new()
 	car.position = pos
 	parent.add_child(car)
+	_cars.append(car)
 	box(Vector3(0.75, 0.32, 1.35), Vector3(0, 0.28, 0), mat(col, 0.5), car)
 	box(Vector3(0.66, 0.26, 0.75), Vector3(0, 0.56, 0.05), mat(col.lightened(0.1), 0.5), car)
 	box(Vector3(0.68, 0.18, 0.6), Vector3(0, 0.58, 0.05), mat(Color("2a3240"), 0.2), car, false)
@@ -321,16 +329,17 @@ func _windows() -> StandardMaterial3D:
 	return _window_mat
 
 
-func _add_trees(tfs: Array[Transform3D]) -> void:
+func _add_trees(tfs: Array[Transform3D]) -> Array:
+	var out: Array = []
 	if tfs.is_empty():
-		return
+		return out
 	var trunk := CylinderMesh.new()
 	trunk.top_radius = 0.1
 	trunk.bottom_radius = 0.16
 	trunk.height = 0.9
 	trunk.radial_segments = 6
 	trunk.material = mat(Palette.TRUNK)
-	_multimesh(trunk, tfs, Vector3(0, 0.45, 0))
+	out.append(_multimesh(trunk, tfs, Vector3(0, 0.45, 0)))
 	var groups: Array = [[], [], [], []]
 	for i in tfs.size():
 		groups[i % 4].append(tfs[i])
@@ -345,7 +354,7 @@ func _add_trees(tfs: Array[Transform3D]) -> void:
 			canopy.radial_segments = 7
 			canopy.rings = 4
 			canopy.material = mat(Palette.TREE_GREENS[gi])
-			_multimesh(canopy, arr, Vector3(0, 1.4, 0))
+			out.append(_multimesh(canopy, arr, Vector3(0, 1.4, 0)))
 		else:
 			var cone := CylinderMesh.new()
 			cone.top_radius = 0.0
@@ -353,7 +362,8 @@ func _add_trees(tfs: Array[Transform3D]) -> void:
 			cone.height = 1.9
 			cone.radial_segments = 7
 			cone.material = mat(Palette.TREE_GREENS[gi])
-			_multimesh(cone, arr, Vector3(0, 1.6, 0))
+			out.append(_multimesh(cone, arr, Vector3(0, 1.6, 0)))
+	return out
 
 
 func _build_road_markings() -> void:
@@ -382,7 +392,7 @@ func _build_road_markings() -> void:
 			var c := City.grid_pos(i, j)
 			for s in 5:
 				cw.append(Transform3D(Basis(), c + Vector3(-0.6 + s * 0.3, 0.06, -2.0)))
-	_multimesh(stripe, cw, Vector3.ZERO)
+	_crosswalks = _multimesh(stripe, cw, Vector3.ZERO)
 
 
 func _build_lamps() -> void:
@@ -916,6 +926,41 @@ func _sync_daylight() -> void:
 	_window_mat.emission_energy_multiplier = night * 1.8
 	_lamp_mat.emission_energy_multiplier = 0.2 + night * 3.0
 	_shop_window_mat.emission_energy_multiplier = 0.3 + night * 1.5
+
+
+# ------------------------------------------------------------- graphics settings
+
+## Applies the world-level graphics options from GameSettings.
+func apply_graphics(s: GameSettings) -> void:
+	# Shadows: Off / Low / High
+	sun.shadow_enabled = s.shadows > 0
+	if s.shadows == 1:
+		RenderingServer.directional_shadow_atlas_set_size(2048, true)
+		_shadow_dist = 110.0
+		sun.shadow_blur = 1.0
+	elif s.shadows == 2:
+		RenderingServer.directional_shadow_atlas_set_size(4096, true)
+		_shadow_dist = 180.0
+		sun.shadow_blur = 1.4
+	sun.directional_shadow_max_distance = _shadow_dist
+	env.fog_enabled = s.fog == 1
+	# Detail: Low hides most of the woods, fences, parked cars and crosswalks;
+	# Medium keeps half the woods; High shows everything.
+	for mmi in _forest:
+		if mmi:
+			var mm := (mmi as MultiMeshInstance3D).multimesh
+			mm.visible_instance_count = [int(mm.instance_count * 0.25), int(mm.instance_count * 0.6), -1][s.detail]
+	if _fences:
+		_fences.visible = s.detail >= 1
+	if _crosswalks:
+		_crosswalks.visible = s.detail >= 1
+	for car in _cars:
+		(car as Node3D).visible = s.detail >= 2
+	# Cheap houses: skip shadow casting from small props on Low.
+	var cast := GeometryInstance3D.SHADOW_CASTING_SETTING_ON if s.detail >= 1 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for mmi in _forest:
+		if mmi:
+			(mmi as MultiMeshInstance3D).cast_shadow = cast
 
 
 # ------------------------------------------------------------- picking & fx
