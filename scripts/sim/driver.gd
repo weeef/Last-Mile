@@ -88,8 +88,8 @@ func load_mult() -> float:
 	return 0.6 if has(&"heavy_hands") else 1.0
 
 
-func learn(district: int) -> void:
-	var rate := 0.04 if has(&"rookie") else 0.02
+func learn(district: int, mult := 1.0) -> void:
+	var rate := (0.04 if has(&"rookie") else 0.02) * mult
 	familiarity[district] = minf(1.0, familiarity[district] + rate)
 
 

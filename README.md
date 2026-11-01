@@ -60,6 +60,19 @@ Every new game is a **12-day season** on a fresh, randomly seeded town.
 - **Combo jokers.** Loading Bay Boss, Postcode Pride, Block Party, Ace Courier, Espresso
   Machine and the ultra rare **Double Down**.
 
+### Staff and phone calls
+
+- **Staff.** Three applicants turn up every morning in the **STAFF** tab. Each role gives a
+  company-wide perk for a daily wage: Mechanic (cheaper, quicker repairs; parked vehicles
+  heal), Sort Lead (faster sorting and loading), Dispatcher (more hustle), Accountant
+  (cheaper fuel, more interest), Marketer (+5% walk-ins), Driving Coach (drivers learn
+  faster, stay happier), Customer Rep (calls ahead, longer promises) and Lawyer (late drops
+  pay more, smaller fines). You can keep 1 at business level 1, up to 4 at level 4.
+- **Phone calls.** A few times a day the phone rings and the clock stops until you answer:
+  a flat tire (change it yourself or pay for roadside), a worrying rattle, a same-hour
+  delivery, a bulk order at 1.5x pay, a fuel sale, a driver Zoomer is trying to poach, a
+  complaint, a radio ad... Every answer says what it costs and what it does.
+
 ### Charters and heat
 
 Pick a **charter** (starting company) and a **heat** level before each season.
@@ -237,6 +250,8 @@ scripts/
     abilities.gd        Dispatcher powers and hustle tuning
     events.gd           Morning dilemmas
     bosses.gd           Boss clients for rent days
+    staff.gd            Hireable depot staff and their perks
+    calls.gd            Phone calls that stop the clock until answered
   audio/                GameAudio: music crossfades and sound effects (game_audio.gd)
     profile.gd          Persistent meta-progression: reputation, HQ upgrades, goals, daily streak
     parcel.gd, driver.gd, traits.gd, company.gd, rival_ai.gd
@@ -269,6 +284,8 @@ Run a full season: `godot --headless --path . -s tools/season_test.gd`
 | Handbook (F1) | Cash tooltip: where the money went |
 |---|---|
 | ![](docs/screenshots/handbook.png) | ![](docs/screenshots/cash-tooltip.png) |
+| **A phone call** | **Hiring staff** |
+| ![](docs/screenshots/phone-call.png) | ![](docs/screenshots/staff.png) |
 
 | Morning briefing | Route sheet |
 |---|---|

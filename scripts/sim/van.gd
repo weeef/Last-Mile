@@ -50,6 +50,7 @@ var route_hits: Array = []           # combo names, for the UI
 var route_base := 0.0                # on-time pay earned so far on this route
 var route_clean := true              # no late parcels yet on this route
 var boost_until := -1.0              # Floor It: faster until this minute
+var hold_until := -1.0               # stopped by the roadside (flat tire, checking a rattle)
 
 # Bookkeeping since the last evening report (for the fleet list and route sheet)
 var earned_today := 0.0

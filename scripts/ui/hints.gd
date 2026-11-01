@@ -24,6 +24,8 @@ const DATA := {
 	"boss": {"title": "Boss client", "body": "Rent day! A boss client's rule is in force all day, whether or not you take their contract. Beat their contract for cash and a relic. Rent is taken at 21:00."},
 	"twist": {"title": "Twist", "body": "A twist changes today's rules (see the line under the clock; hover it for numbers). The briefing warns about them a day ahead."},
 	"level": {"title": "Level up", "body": "Lifetime earnings raised your business level: a bigger fleet cap and new partners or vehicles. Hover the level bar (top left) to see every level and what it unlocks."},
+	"call": {"title": "The phone's ringing", "body": "Calls come in a few times a day: customers, drivers, vendors. The clock stops until you answer. Each answer says what it costs and what happens, so read before you click."},
+	"staff": {"title": "Hiring staff", "body": "Applicants turn up every morning in the STAFF tab. Each role (mechanic, accountant, marketer...) gives a perk for a daily wage. Your business level decides how many you can keep: 1 at level 1, up to 4."},
 	"hustle": {"title": "Hustle is full", "body": "You earn 1 hustle per on-time drop, but it caps at 10. Spend it on the powers on the left (keys Z X C V B) instead of wasting it."},
 }
 

@@ -28,7 +28,7 @@ var _hint_speed := 0
 var skipping := false         # fast-forward until something needs the player
 var _skip_ready := 0
 const SKIP_SPEED := 16
-const SKIP_STOP_EVENTS := ["rush_order", "breakdown", "job_arrived", "van_home", "streak_broken", "contract_done", "route_combo", "route_bust"]
+const SKIP_STOP_EVENTS := ["call", "rush_order", "breakdown", "job_arrived", "van_home", "streak_broken", "contract_done", "route_combo", "route_bust"]
 
 
 func _ready() -> void:
@@ -228,6 +228,11 @@ func _on_sim_event(n: String, _d: Dictionary) -> void:
 				_tutorial.setup(sim, hud, self)
 		"night":
 			_set_overlay(null)
+		"call":
+			_show_call()
+		"call_answered":
+			if _overlay is CallPopup:
+				_set_overlay(null)
 		"run_over":
 			_finish_run()
 
@@ -280,6 +285,10 @@ func _event_sound(n: String, d: Dictionary) -> void:
 			GameAudio.sfx("rush", 1.0, -3.0)
 		"ability":
 			GameAudio.sfx("power")
+		"call":
+			GameAudio.sfx("phone")
+		"staff_hired":
+			GameAudio.sfx("stamp")
 		"van_departed":
 			if d["van"].company == Sim.PLAYER:
 				GameAudio.sfx("depart", randf_range(0.92, 1.08), -10.0)
@@ -326,6 +335,8 @@ func _show_phase_overlay() -> void:
 		var r := DayReport.new()
 		_set_overlay(r)
 		r.setup(sim, self)
+	elif sim.phase == Sim.Phase.DAY and not sim.pending_call.is_empty():
+		_show_call()
 	elif sim.phase == Sim.Phase.DAY:
 		set_speed(_last_speed)
 	elif sim.phase == Sim.Phase.OVER:
@@ -445,6 +456,14 @@ func open_help() -> void:
 			set_speed(resume))
 
 
+## The phone rings: a call sheet you must answer (the sim clock waits for it).
+func _show_call() -> void:
+	select_van(null)
+	var c := CallPopup.new()
+	c.setup(sim, self)
+	_set_overlay(c)
+
+
 ## Town ambience follows the clock and weather; engines hum when the camera is close.
 func _update_ambience() -> void:
 	var h := sim.minute_of_day() / 60.0
@@ -466,12 +485,16 @@ func _event_hint(n: String, d: Dictionary) -> void:
 		"day_begun":
 			if not _want_tutorial and _tutorial == null:
 				hints.trigger("first_day")
+			if sim.day() >= 2 and not sim.applicants.is_empty():
+				hints.trigger("staff")
 			if sim.today_type == "boss":
 				hints.trigger("boss")
 			elif sim.twist != "":
 				hints.trigger("twist")
 		"job_arrived":
 			hints.trigger("job_arrived")
+		"call":
+			hints.trigger("call")
 		"not_home":
 			if d["van"].company == Sim.PLAYER:
 				hints.trigger("not_home")

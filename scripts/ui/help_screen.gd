@@ -98,6 +98,13 @@ static func topics(s: Sim) -> Array:
 	t.append({"cat": "Vehicles", "title": "Vehicle types", "body": "\n\n".join(VehicleTypes.ORDER.map(func(k): return Explain.vehicle_type(k)))})
 	t.append({"cat": "Vehicles", "title": "Upgrade cards", "body":
 		"Vehicle mods go on one vehicle (vans and sprinters have 2 slots, box trucks 3; a new mod on a full vehicle replaces the oldest). Company perks apply to everything.\n\nWhen you pick a card, the report shows exactly what changes, e.g. 'Fuel: $7.9/h -> $5.5/h'. Rarities: Common, Uncommon, Rare, Ultra rare, and Relics (only from boss clients).\n\nReroll costs $60, then $120... Skipping pays $40."})
+	var roles: Array = []
+	for k in Staff.ORDER:
+		roles.append("%s (about $%d/day): %s" % [Staff.get_role(k)["role"], int(Staff.get_role(k)["wage"]), Staff.get_role(k)["desc"]])
+	t.append({"cat": "Basics", "title": "Staff", "body":
+		"The STAFF tab lists the people working at your depot and today's applicants (3 new ones every morning). Each role gives a company-wide perk for a daily wage, paid at 21:00 plus the first day when you hire them. You can keep 1 at business level 1, 2 at level 2, up to 4.\n\n" + "\n".join(roles)})
+	t.append({"cat": "Basics", "title": "Phone calls", "body":
+		"A few times a day (08:30-19:30, every 1.5-2.5 hours) the phone rings: customers wanting a favour, drivers with a flat tire or a worrying rattle, vendors with a bulk order, a fuel sale, a radio ad... The clock stops until you answer. Every answer shows what it costs and what it does. Calls that cost money say so on the button."})
 	t.append({"cat": "Drivers", "title": "Mood", "body":
 		"Mood (0-100) changes driving speed: x0.85 at 0, x1.00 at 50, x1.15 at 100.\n\nUp: parked (+6/h), in the shop (+3/h), on-time drops (+0.4).\nDown: driving (-2/h), late drops (-2), nobody home (-1), breakdowns (-8), stranded (-10/h).\n\nSunny drivers never drop below 50; the Comfy Cab mod stops mood dropping at all."})
 	t.append({"cat": "Drivers", "title": "Knows area", "body":

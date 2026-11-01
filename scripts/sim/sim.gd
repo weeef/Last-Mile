@@ -92,6 +92,12 @@ var week_boss := ""              # Bosses id for this week's rent day
 var evening_stage := ""          # "draft", "relic", "shop", "plan"
 var shop: Array = []             # [{"id": StringName, "price": float, "sold": bool}]
 var shop_rerolls := 0
+
+# Staff and phone calls
+var applicants: Array = []       # today's job applicants (see Staff)
+var pending_call := {}           # {"id", "ctx", "van"}; the clock waits until it's answered
+var next_call_at := 0.0
+var fuel_sale_until := -1.0
 const SHOP_REROLL := 25.0
 const SHOP_TUNEUP_PER_VAN := 30.0
 const SHOP_HUSTLE := 40.0
@@ -218,7 +224,7 @@ func traffic_mult() -> float:
 
 ## True while the clock should run (day or the fast-forwarded night).
 func clock_running() -> bool:
-	return phase == Phase.DAY or phase == Phase.NIGHT
+	return (phase == Phase.DAY or phase == Phase.NIGHT) and pending_call.is_empty()
 
 
 # ---------------------------------------------------------------- commands
@@ -432,6 +438,26 @@ func _process_commands() -> void:
 				c.max_wait = clampf(cmd["value"], 5.0, 60.0)
 			"set_auto_service":
 				c.auto_service = clampf(cmd["value"], 0.0, 0.8)
+			"hire_staff":
+				var i: int = cmd["index"]
+				if c.id == PLAYER and i >= 0 and i < applicants.size() and c.staff.size() < Staff.slots(c.level):
+					var a: Dictionary = applicants[i]
+					if c.money >= a["wage"]:
+						c.add_money(-a["wage"], "staff")       # signing fee: the first day's wage
+						c.staff.append(a)
+						applicants.remove_at(i)
+						notice.emit("%s joins as your %s: %s" % [a["name"], Staff.get_role(a["role"])["role"], Staff.get_role(a["role"])["desc"]], "good")
+						event.emit("staff_hired", {"staff": a})
+			"fire_staff":
+				var i: int = cmd["index"]
+				if c.id == PLAYER and i >= 0 and i < c.staff.size():
+					var a: Dictionary = c.staff[i]
+					c.staff.remove_at(i)
+					notice.emit("%s (%s) has left. Their perk is gone and so is their wage." % [a["name"], Staff.get_role(a["role"])["role"]], "info")
+					event.emit("staff_fired", {"staff": a})
+			"answer_call":
+				if c.id == PLAYER and not pending_call.is_empty():
+					_answer_call(c, cmd["index"], now)
 			"ability":
 				if c.id == PLAYER and phase == Phase.DAY:
 					_use_ability(c, cmd["ability"], cmd.get("van", -1), now)
@@ -741,6 +767,10 @@ func _begin_morning(first := false) -> void:
 	green_wave_until = -1.0
 	_start_day_type(p)
 	_roll_event()
+	_roll_applicants(p)
+	call_ahead_left = int(p.perk_add("call_ahead_morning"))
+	next_call_at = floorf(minutes() / 1440.0) * 1440.0 + Calls.FIRST + rng.randf_range(0.0, 60.0) + (150.0 if day() == 1 else 0.0)
+	pending_call = {}
 	_gain_hustle(int(p.perk_add("hustle_morning")))
 	event.emit("morning", {})
 
@@ -773,6 +803,9 @@ func _begin_evening() -> void:
 	if season_on() and p.money > 0.0:
 		interest = minf(floorf(p.money / 100.0) * 5.0, 25.0 + p.perk_add("interest_cap"))
 		p.add_money(interest, "interest")
+	var staff_pay := p.staff_wages()
+	if staff_pay > 0.0:
+		p.add_money(-staff_pay, "staff")
 	var lease := {}
 	if season_on() and day() % Season.WEEK_DAYS == 0:
 		lease = _settle_lease(p)
@@ -861,6 +894,9 @@ func _apply_card(c: Company, id: StringName, van_id: int) -> void:
 # ---------------------------------------------------------------- main step
 
 func step() -> void:
+	if not pending_call.is_empty():
+		_process_commands()      # the phone is ringing: nothing moves until it's answered
+		return
 	tick += 1
 	_process_commands()
 	var now := minutes()
@@ -878,6 +914,8 @@ func step() -> void:
 		_maybe_rush_order(now)
 	if tick % 40 == 0:
 		rival_ai.think()
+	if phase == Phase.DAY and now >= next_call_at:
+		_ring_call(now)
 	_check_new_day()
 	var m := minute_of_day()
 	if phase == Phase.DAY and m >= DAY_END:
@@ -1117,6 +1155,8 @@ func _mood(v: Van, delta: float) -> void:
 		return
 	if delta < 0.0 and twist == "heatwave" and v.company == PLAYER:
 		delta *= 2.0
+	if delta < 0.0 and v.company == PLAYER:
+		delta *= companies[PLAYER].perk("mood_drain")
 	v.driver.change_mood(delta)
 	if delta < 0.0 and v.company == PLAYER:
 		var floor_at := companies[PLAYER].perk_add("mood_floor")
@@ -1126,15 +1166,21 @@ func _mood(v: Van, delta: float) -> void:
 
 func _step_van(c: Company, v: Van, now: float) -> void:
 	v.prev_pos = v.pos
+	if now < v.hold_until and v.state in [Van.State.EN_ROUTE, Van.State.RETURNING, Van.State.RESCUE]:
+		_mood(v, -0.004)        # stopped at the roadside
+		return
 	match v.state:
 		Van.State.IDLE:
 			_mood(v, 0.012)
+			var fix := c.perk_add("depot_repair")
+			if fix > 0.0:
+				v.condition = minf(1.0, v.condition + fix / TICKS_PER_HOUR)
 			v.ready = false
 			if c.auto_service > 0.0 and v.condition < c.auto_service:
 				_send_to_shop(c, v)
 			elif v.auto_fill and _has_loadable(c, v):
 				v.state = Van.State.LOADING
-				v.timer = Van.LOAD_MINUTES * v.driver.load_mult()
+				v.timer = Van.LOAD_MINUTES * v.driver.load_mult() * c.perk("load")
 		Van.State.LOADING:
 			v.timer -= MIN_PER_TICK
 			if v.timer <= 0.0 and v.auto_fill:
@@ -1143,7 +1189,7 @@ func _step_van(c: Company, v: Van, now: float) -> void:
 					p.set_stage(Parcel.Stage.LOADED, now)
 					p.van_code = v.code
 					v.cargo.append(p)
-					v.timer = Van.LOAD_MINUTES * v.driver.load_mult()
+					v.timer = Van.LOAD_MINUTES * v.driver.load_mult() * c.perk("load")
 					if v.cargo.size() == 1:
 						event.emit("van_loaded", {"van": v})
 			if not v.cargo.is_empty():
@@ -1308,6 +1354,153 @@ func _use_ability(c: Company, id: String, van_id: int, now: float) -> void:
 
 func _gain_hustle(amount: int) -> void:
 	hustle = mini(hustle + amount, hustle_cap())
+
+
+# ---------------------------------------------------------------- staff and calls
+
+func _roll_applicants(p: Company) -> void:
+	applicants = []
+	var exclude: Array = p.staff.map(func(st): return st["role"])
+	for k in Staff.APPLICANTS:
+		var a := Staff.applicant(rng, exclude)
+		exclude.append(a["role"])
+		applicants.append(a)
+
+
+func _call_van(states: Array, worn := false) -> Van:
+	var pool: Array = []
+	for v in companies[PLAYER].vans:
+		if v.state in states and (not worn or v.condition < 0.6):
+			pool.append(v)
+	return pool[rng.randi_range(0, pool.size() - 1)] if not pool.is_empty() else null
+
+
+## The phone rings: pick a call that makes sense right now and stop the clock.
+func _ring_call(now: float) -> void:
+	var m := minute_of_day()
+	next_call_at = now + rng.randf_range(Calls.GAP[0], Calls.GAP[1])
+	var p := companies[PLAYER]
+	if m < Calls.FIRST or m > Calls.LAST or p.vans.is_empty():
+		return
+	var road := [Van.State.EN_ROUTE, Van.State.RETURNING]
+	var options: Array = []
+	for cid in Calls.ORDER:
+		var needs: String = Calls.get_call(cid).get("needs", "")
+		var ok := true
+		match needs:
+			"van_on_road":
+				ok = _call_van(road) != null
+			"van_worn":
+				ok = _call_van(road, true) != null
+			"late_today":
+				ok = p.counters.get("late", 0) > 0
+		if ok:
+			options.append(cid)
+	var id: String = options[rng.randi_range(0, options.size() - 1)]
+	var v: Van = null
+	match Calls.get_call(id).get("needs", ""):
+		"van_on_road":
+			v = _call_van(road)
+		"van_worn":
+			v = _call_van(road, true)
+		_:
+			v = p.vans[rng.randi_range(0, p.vans.size() - 1)]
+	var district := rng.randi_range(0, 3)
+	pending_call = {"id": id, "van": v.id, "district": district, "ctx": {
+		"van": v.code, "driver": v.driver.name, "district": City.DISTRICT_NAMES[district], "cond": int(v.condition * 100)}}
+	event.emit("call", pending_call)
+
+
+func _answer_call(c: Company, i: int, now: float) -> void:
+	var id: String = pending_call["id"]
+	var opts: Array = Calls.get_call(id)["options"]
+	if i < 0 or i >= opts.size():
+		return
+	var cost := Calls.cost(id, i)
+	if c.money < cost:
+		return
+	if cost > 0.0:
+		c.add_money(-cost, "events")
+	var v := _find_van(c, pending_call["van"])
+	var d: int = pending_call["district"]
+	var result := ""
+	match id + ":" + str(i):
+		"rush_drop:0":
+			var p := _new_parcel(c, rng.randi_range(0, city.houses.size() - 1), now)
+			c.sorting.erase(p)
+			p.set_stage(Parcel.Stage.SORTED, now)
+			c.waiting.append(p)
+			p.kind = Parcel.Kind.EXPRESS
+			p.weight = snappedf(rng.randf_range(1.0, 6.0), 0.1)
+			p.pay_amount = 45.0
+			p.deadline = now + 45.0
+			result = "An express parcel for %s is waiting at the depot." % city.houses[p.house]["address"]
+		"flat_tire:0", "flat_tire:1":
+			if v:
+				v.hold_until = now + (20.0 if i == 0 else 5.0)
+			result = "%s is back on the road in %d min." % [v.code if v else "The van", 20 if i == 0 else 5]
+		"rattle:0":
+			if v:
+				v.hold_until = now + 15.0
+				v.condition = minf(1.0, v.condition + 0.15)
+			result = "A loose heat shield, tightened. Condition +15%."
+		"complaint:0":
+			score[d][PLAYER] = clampf(score[d][PLAYER] + 0.05, 0.0, 1.0)
+			result = "The customer calms down."
+		"complaint:1":
+			share[d] = clampf(share[d] - 0.04, 0.1, 0.9)
+			result = "Word gets around %s. Walk-in share -4%%." % City.DISTRICT_NAMES[d]
+		"sick:0":
+			if v:
+				v.driver.change_mood(20.0)
+			result = "A temp covers the shift."
+		"sick:1":
+			if v:
+				v.driver.change_mood(-25.0)
+			result = "They stay, grumbling."
+		"fuel_sale:0":
+			fuel_sale_until = now + 180.0
+			result = "Fuel is half price until %s." % clock(fuel_sale_until)
+		"bulk:0":
+			var open: Array = c.vendors_unlocked.keys()
+			open.sort()
+			var j := _make_job(open[rng.randi_range(0, open.size() - 1)], now)
+			j.pay = roundf(j.pay * 1.5)
+			j.express = true
+			j.promise = 75.0
+			j.state = Job.State.PACKING
+			j.timer = Vendors.get_vendor(j.vendor)["prep"]
+			c.jobs.append(j)
+			result = "%s is packing a %d-stop order worth $%d." % [Vendors.get_vendor(j.vendor)["name"], j.stops(), int(j.pay)]
+			event.emit("job_taken", {"job": j})
+		"poach:0":
+			if v:
+				v.driver.change_mood(15.0)
+			result = "They're staying."
+		"poach:1":
+			if v and rng.randf() < 0.4:
+				var old := v.driver.name
+				v.driver = Driver.generate(rng, day())
+				result = "%s left for Zoomer. %s takes over %s." % [old, v.driver.name, v.code]
+			else:
+				result = "They decided to stay after all."
+		"radio:0":
+			for k in 4:
+				share[k] = clampf(share[k] + 0.03, 0.1, 0.9)
+			result = "The ad runs during the traffic report."
+		"thanks:0":
+			c.add_money(25.0, "tips")
+			for van in c.vans:
+				van.driver.change_mood(5.0)
+			result = "The crew is chuffed."
+		_:
+			result = "Nothing happens."
+	var answered := pending_call.duplicate(true)
+	answered["choice"] = i
+	answered["result"] = result
+	pending_call = {}
+	notice.emit(result, "info")
+	event.emit("call_answered", answered)
 
 
 ## Morning dilemma from Events. Effects that roll dice use sim.rng.
@@ -1555,7 +1748,7 @@ func _deliver(c: Company, v: Van, p: Parcel, now: float) -> void:
 		base *= v.fx("express_pay")
 	if c.id == PLAYER and today_type == "rush":
 		base *= 1.25
-	var pay := base * (0.3 if p.late else 1.0)
+	var pay := base * ((0.3 + (c.perk_add("late_pay_add") if c.id == PLAYER else 0.0)) if p.late else 1.0)
 	var booked := false
 	if c.id == PLAYER:
 		if p.late:
@@ -1568,6 +1761,7 @@ func _deliver(c: Company, v: Van, p: Parcel, now: float) -> void:
 				fine = 10.0
 			if boss_rule() == "streamqueen":
 				fine = 15.0
+			fine *= c.perk("fine")
 			if fine > 0.0:
 				pay = 0.0
 				c.add_money(-fine, "fines", v)
@@ -1620,7 +1814,7 @@ func _deliver(c: Company, v: Van, p: Parcel, now: float) -> void:
 	var d := v.driver
 	d.delivered_today += 1
 	d.delivered_total += 1
-	d.learn(p.district)
+	d.learn(p.district, c.perk("learn"))
 	if p.late:
 		d.late_total += 1
 		_mood(v, -2.0)
@@ -1802,7 +1996,8 @@ const TICKS_PER_HOUR := 60.0 / MIN_PER_TICK
 
 
 func fuel_mult(c: Company, v: Van) -> float:
-	return v.spec()["fuel"] * v.fx("fuel") * c.perk("fuel")
+	var sale := 0.5 if c.id == PLAYER and minutes() < fuel_sale_until else 1.0
+	return v.spec()["fuel"] * v.fx("fuel") * c.perk("fuel") * sale
 
 
 ## Hourly running costs and wear for a vehicle, at normal traffic.

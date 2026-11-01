@@ -46,6 +46,9 @@ var _level_tip: Control
 var _rival_tip: Control
 var _cash_tip: Control
 var _tip_frame := 0
+var _staff_list: VBoxContainer
+var _staff_sig := ""
+var _hire_btns: Array = []
 var _hustle_bar: LMBar
 var _hustle_val: Label
 var _power_btns := {}
@@ -871,7 +874,7 @@ func _build_clipboard() -> void:
 	head.mouse_filter = Control.MOUSE_FILTER_STOP
 	var hh := UIKit.hbox(4)
 	head.add_child(hh)
-	for t in [["jobs", "Jobs"], ["fleet", "Fleet"], ["buy", "Buy"], ["rules", "Rules"], ["map", "Districts"]]:
+	for t in [["jobs", "Jobs"], ["fleet", "Fleet"], ["staff", "Staff"], ["buy", "Buy"], ["rules", "Rules"], ["map", "Districts"]]:
 		var b := Button.new()
 		b.text = String(t[1]).to_upper()
 		b.focus_mode = Control.FOCUS_NONE
@@ -904,6 +907,7 @@ func _build_clipboard() -> void:
 	_pages["buy"] = _page_buy()
 	_pages["rules"] = _page_rules()
 	_pages["map"] = _page_map()
+	_pages["staff"] = _page_staff()
 	for k in _pages.keys():
 		var pg: Control = _pages[k]
 		stack.add_child(pg)
@@ -1327,6 +1331,88 @@ func _refresh_buy() -> void:
 			b.text = "BUY %s" % UIKit.money(sim.van_price(p, t)) if sim.van_price(p, t) < spec["cost"] else "BUY"
 
 
+# ------------------------------------------------------------- staff page
+
+func _page_staff() -> Control:
+	_staff_list = UIKit.vbox(6)
+	return _scroll(_staff_list)
+
+
+func _refresh_staff() -> void:
+	var p := sim.player()
+	var sig := "%d|%s|%s" % [Staff.slots(p.level), str(p.staff), str(sim.applicants)]
+	if sig != _staff_sig:
+		_staff_sig = sig
+		_rebuild_staff()
+	for e in _hire_btns:
+		var b: Button = e["btn"]
+		b.disabled = p.money < e["wage"] or p.staff.size() >= Staff.slots(p.level)
+	(_tab_btns["staff"] as Button).text = "STAFF %d/%d" % [p.staff.size(), Staff.slots(p.level)]
+
+
+func _rebuild_staff() -> void:
+	var p := sim.player()
+	ModalSheet.clear(_staff_list)
+	_hire_btns.clear()
+	var slots := Staff.slots(p.level)
+	var intro := UIKit.label("Staff work at the depot and each gives a perk for a daily wage (paid at 21:00, plus the first day when hired). You can keep %d at %s; each business level adds one. New applicants every morning." % [slots, p.level_info()["name"]], 12, Palette.TEXT_SOFT)
+	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_staff_list.add_child(intro)
+	_staff_list.add_child(UIKit.head("Your staff · %d of %d · %s/day" % [p.staff.size(), slots, UIKit.money(p.staff_wages())], 15, Palette.TEXT))
+	if p.staff.is_empty():
+		_staff_list.add_child(UIKit.label("Nobody yet.", 13, Palette.TEXT_SOFT))
+	for i in p.staff.size():
+		var st: Dictionary = p.staff[i]
+		var idx := i
+		var b := UIKit.button("Let go", "paper", 13)
+		UIKit.tip(b, "%s leaves now. Their perk stops, and so does their wage." % st["name"])
+		b.pressed.connect(func(): main.submit_player({"type": "fire_staff", "index": idx}))
+		_staff_list.add_child(_staff_row(st, b))
+	_staff_list.add_child(UIKit.rule())
+	_staff_list.add_child(UIKit.head("Applicants today", 15, Palette.TEXT))
+	if sim.applicants.is_empty():
+		_staff_list.add_child(UIKit.label("No one else today. More come tomorrow morning.", 13, Palette.TEXT_SOFT))
+	for i in sim.applicants.size():
+		var a: Dictionary = sim.applicants[i]
+		var idx := i
+		var b := UIKit.button("Hire  %s" % UIKit.money(a["wage"]), "go", 13)
+		UIKit.tip(b, "Hire %s. Costs %s now (first day) and %s every evening after." % [a["name"], UIKit.money(a["wage"]), UIKit.money(a["wage"])])
+		b.pressed.connect(func(): main.submit_player({"type": "hire_staff", "index": idx}))
+		_hire_btns.append({"btn": b, "wage": a["wage"]})
+		_staff_list.add_child(_staff_row(a, b))
+
+
+func _staff_row(st: Dictionary, action: Button) -> Control:
+	var role := Staff.get_role(st["role"])
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", UIKit.flat(Palette.PAPER_2, 2, 8, 5))
+	var h := UIKit.hbox(10)
+	panel.add_child(h)
+	var ic := LMIcon.new()
+	ic.icon = role["icon"]
+	ic.color = Palette.INK
+	ic.custom_minimum_size = Vector2(26, 26)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(ic)
+	var who := UIKit.vbox(-3)
+	who.custom_minimum_size.x = 120
+	who.add_child(UIKit.head(role["role"], 16, Palette.TEXT))
+	who.add_child(UIKit.label(st["name"], 11, Palette.TEXT_SOFT))
+	h.add_child(who)
+	var d := UIKit.label(role["desc"], 12, Palette.TEXT)
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	d.custom_minimum_size.x = 230
+	h.add_child(d)
+	var w := UIKit.mono("%s/day" % UIKit.money(st["wage"]), 12, Palette.TEXT, true)
+	w.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(w)
+	action.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	action.custom_minimum_size.x = 92
+	h.add_child(action)
+	return panel
+
+
 # ------------------------------------------------------------- rules page
 
 func _page_rules() -> Control:
@@ -1604,4 +1690,6 @@ func refresh(speed: int, cam: Camera3D, world: WorldView) -> void:
 			_refresh_rules()
 		"map":
 			_refresh_map()
+		"staff":
+			_refresh_staff()
 	_refresh_tag(cam, world)

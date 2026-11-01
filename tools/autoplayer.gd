@@ -4,7 +4,15 @@ extends RefCounted
 
 static func act(sim: Sim, i: int) -> void:
 	var p := sim.player()
+	if not sim.pending_call.is_empty():
+		var cid: String = sim.pending_call["id"]
+		var pick: int = 0 if p.money >= Calls.cost(cid, 0) + 300.0 else Calls.get_call(cid)["options"].size() - 1
+		sim.submit({"type": "answer_call", "company": 0, "index": pick})
+		sim.apply_commands_now()
+		return
 	if sim.phase == Sim.Phase.MORNING:
+		if p.staff.size() < Staff.slots(p.level) and not sim.applicants.is_empty() and p.money > 2500.0:
+			sim.submit({"type": "hire_staff", "company": 0, "index": 0})
 		if not sim.morning_event.is_empty() and not sim.morning_event.get("done", false):
 			var id: String = sim.morning_event["id"]
 			var pick: int = 0 if p.money >= Events.cost(id, 0, p.vans.size()) + 400.0 else Events.get_event(id)["options"].size() - 1

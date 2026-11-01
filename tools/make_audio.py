@@ -711,6 +711,11 @@ def sfx_extra():
                        [(0.1, sum(pad([hz(n)], 1.8, 0.7) for n in [m("D", 4), m("F#", 4), m("A", 4)]))])
     # Confirm: two soft rising notes.
     out["confirm"] = seq([(0, pluck(hz(m("E", 5)), 0.3, 0.4, bright=0.9)), (0.07, pluck(hz(m("B", 5)), 0.45, 0.4, bright=0.9))])
+    # Phone: an old desk phone, two soft rings.
+    ring_t = t(0.4)
+    ring = (np.sin(TAU * 880 * ring_t) + 0.6 * np.sin(TAU * 1100 * ring_t)) * (0.5 + 0.5 * np.sign(np.sin(TAU * 20 * ring_t))) * adsr(len(ring_t), 0.01, 0.05, 0.8, 0.05)
+    ring = fft_filter(ring, lo=300, hi=3500, circular=False) * 0.35
+    out["phone"] = seq([(0, ring), (0.55, ring)])
     # Nobody home: a doorbell that goes unanswered.
     out["doorbell"] = seq([(0, bell(hz(m("E", 5)), 0.6, 0.35)), (0.28, bell(hz(m("C", 5)), 0.9, 0.3))])
     ir = reverb_ir(0.5, 98)

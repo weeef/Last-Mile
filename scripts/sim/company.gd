@@ -42,18 +42,19 @@ var contract := {}               # today's chosen contract
 var contract_done := false
 var counters := {}               # today's tallies for contracts and the report
 var stars_total := 0
+var staff: Array = []            # hired staff: [{"role", "name", "wage"}] (see Staff)
 
 # Money ledger: category -> amount since the last evening report (+ in, - out).
 var ledger := {}
 const LEDGER_LABELS := {
 	"deliveries": "Deliveries", "streak": "Streak bonus", "tips": "Tips", "combos": "Clean-run bonuses",
-	"contracts": "Contract rewards", "interest": "Savings interest", "events": "Morning events",
+	"contracts": "Contract rewards", "interest": "Savings interest", "events": "Events and calls",
 	"wages": "Driver wages", "fuel": "Fuel", "repairs": "Repairs", "services": "Services", "tows": "Tows",
-	"fines": "Fines", "rent": "Rent", "vehicles": "Vehicles bought / sold", "unlocks": "Vendor partnerships",
+	"fines": "Fines", "staff": "Staff wages", "rent": "Rent", "vehicles": "Vehicles bought / sold", "unlocks": "Vendor partnerships",
 	"cards": "Cards, rerolls, shop", "other": "Other",
 }
 const LEDGER_ORDER := ["deliveries", "streak", "tips", "combos", "contracts", "interest", "events",
-	"wages", "fuel", "repairs", "services", "tows", "fines", "rent", "vehicles", "unlocks", "cards", "other"]
+	"wages", "fuel", "repairs", "services", "tows", "fines", "staff", "rent", "vehicles", "unlocks", "cards", "other"]
 
 
 ## Every change to money goes through here so the ledger can explain it.
@@ -74,10 +75,19 @@ func ledger_total() -> float:
 	return t
 
 
+## Every source of company-wide effects: perk cards, then hired staff.
+func fx_sources() -> Array:
+	var out: Array = []
+	for id in perks:
+		out.append(Cards.DATA[id]["fx"])
+	for st in staff:
+		out.append(Staff.get_role(st["role"])["fx"])
+	return out
+
+
 func perk(key: String, default := 1.0) -> float:
 	var m := default
-	for id in perks:
-		var f: Dictionary = Cards.DATA[id]["fx"]
+	for f in fx_sources():
 		if f.has(key):
 			if key == "promise_add":
 				m += f[key]
@@ -86,21 +96,34 @@ func perk(key: String, default := 1.0) -> float:
 	return m
 
 
-## Sum of an additive perk key (streak_cap, streak_floor, interest_cap).
+## Sum of an additive perk key (streak_cap, streak_floor, interest_cap, ...).
 func perk_add(key: String) -> float:
 	var total := 0.0
-	for id in perks:
-		var f: Dictionary = Cards.DATA[id]["fx"]
+	for f in fx_sources():
 		if f.has(key):
 			total += f[key]
 	return total
 
 
 func has_perk_fx(key: String) -> bool:
-	for id in perks:
-		if Cards.DATA[id]["fx"].has(key):
+	for f in fx_sources():
+		if f.has(key):
 			return true
 	return false
+
+
+func has_staff(role: String) -> bool:
+	for st in staff:
+		if st["role"] == role:
+			return true
+	return false
+
+
+func staff_wages() -> float:
+	var w := 0.0
+	for st in staff:
+		w += st["wage"]
+	return w
 
 
 func count(key: String, amount := 1.0) -> void:

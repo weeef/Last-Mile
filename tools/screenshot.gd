@@ -2,6 +2,7 @@ extends SceneTree
 ## Renders the game and saves a PNG.
 ## Usage: -s tools/screenshot.gd -- out.png <mode> <ticks>
 ##   mode: title | picker | hq | settings | briefing | play | route | report | rain | wide | help | tooltip | listen
+##   call: forces a phone call · staff: the STAFF tab
 ##   listen: plays a few seconds at 2x zoomed in on a van (use with --write-movie to record audio)
 var main: Node
 var frame := 0
@@ -68,6 +69,16 @@ func _process(_d: float) -> bool:
 				main.cam.zoom(0.3)
 				break
 		main.set_speed(2)
+	if frame == 6 and mode == "call":
+		var sim: Sim = main.sim
+		sim.next_call_at = sim.minutes()
+		var k := 0
+		while sim.pending_call.is_empty() and k < 2000:
+			sim.step()
+			k += 1
+	if frame == 6 and mode == "staff":
+		main.sim.player().money += 500.0
+		main.hud.set_tab("staff")
 	if frame == 20 and mode == "help":
 		main.open_help()
 	if frame == 20 and mode == "tooltip":

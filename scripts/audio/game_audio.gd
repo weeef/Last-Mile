@@ -22,7 +22,7 @@ const AMBIENCE := {
 const ENGINE := "res://audio/ambience/engine.ogg"
 const SFX := ["click", "confirm", "card", "reveal", "ultra", "coin", "stamp", "event", "ding", "late", "doorbell", "cash",
 	"jackpot", "bust", "streak", "streak_break", "breakdown", "tow", "rush", "notice", "power", "depart", "rent_paid",
-	"win", "evicted", "level_up", "relic"]
+	"win", "evicted", "level_up", "relic", "phone"]
 const BUSES := ["Music", "Effects", "Ambience"]
 const VOICES := 12
 const FADE := 1.2
